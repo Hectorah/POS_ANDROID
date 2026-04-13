@@ -1,0 +1,25 @@
+cmake_minimum_required(VERSION 3.14)
+project(flutter_pos_app LANGUAGES CXX)
+
+set(BINARY_NAME "flutter_pos_app")
+
+cmake_policy(SET CMP0063 NEW)
+
+set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+
+set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
+
+add_subdirectory(${FLUTTER_MANAGED_DIR})
+
+add_subdirectory("runner")
+
+add_custom_target(very_verbose ALL
+  COMMAND ${CMAKE_COMMAND} -E echo "Building ${BINARY_NAME}..."
+)

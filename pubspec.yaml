@@ -1,0 +1,62 @@
+name: pos_android
+description: POS ANDROID - Sistema de Punto de Venta profesional
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI & Responsive
+  flutter_screenutil: ^5.9.0
+  responsive_builder: ^0.7.0
+  google_fonts: ^6.1.0
+  
+  # State Management
+  flutter_bloc: ^8.1.3
+  provider: ^6.1.1
+  
+  # Charts
+  fl_chart: ^0.66.0
+  
+  # Navigation
+  go_router: ^13.0.0
+  
+  # Storage
+  shared_preferences: ^2.2.2
+  sqflite: ^2.3.0
+  path_provider: ^2.1.1    # Para encontrar las carpetas seguras en Android
+  path: ^1.8.3
+
+  #excel
+  excel: ^4.0.0
+  file_picker: ^8.0.0 # Para que el cliente pueda buscar el archivo en su teléfono
+  permission_handler: ^11.3.0  # Para solicitar permisos de almacenamiento
+  csv: ^6.0.0  # Para leer archivos CSV como alternativa
+  
+  # Utils
+  intl: ^0.18.1
+  crypto: ^3.0.3  # Para hashear contraseñas
+  http: ^1.2.0    # Para llamadas API (tasas de cambio)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  # Assets de la aplicación
+  assets:
+    # Imágenes generales
+    - assets/images/
+    
+    # Iconos personalizados
+    - assets/icons/
+    
+    # Logos de la empresa
+    - assets/logos/
