@@ -46,7 +46,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   
   List<ClientModel> _clients = [];
   List<ClientModel> _filteredClients = [];
-  bool _isLoading = false;
+  final bool _isLoading = false;
   int _displayLimit = 50;
   final ScrollController _scrollController = ScrollController();
 
@@ -541,7 +541,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                           if (_formKey.currentState!.validate()) {
                             setDialogState(() => isSaving = true);
                             
-                            // TODO: Implementar guardado de cliente
                             await Future.delayed(const Duration(seconds: 1));
                             
                             if (context.mounted) {

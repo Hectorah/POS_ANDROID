@@ -245,7 +245,7 @@ class ExcelService {
 
               // Extraemos los datos según el orden de tus columnas en Excel
               // Col 0: CodArticulo, Col 1: CodBarras, Col 2: Nombre, Col 3: Precio, Col 4: Stock
-              final codArt = row.length > 0 ? (row[0]?.value?.toString().trim() ?? '') : '';
+              final codArt = row.isNotEmpty ? (row[0]?.value?.toString().trim() ?? '') : '';
               final codBar = row.length > 1 ? (row[1]?.value?.toString().trim() ?? '') : '';
               final nombre = row.length > 2 ? (row[2]?.value?.toString().trim() ?? '') : '';
               final precioStr = row.length > 3 ? (row[3]?.value?.toString().trim() ?? '0') : '0';
@@ -417,6 +417,296 @@ class ExcelService {
       
       debugPrint('📋 Total de filas en CSV: ${rows.length}');
       
+      // Filtrar comentarios (líneas que empiezan con #)
+      final rowsSinComentarios = rows.where((row) {
+        if (row.isEmpty) return false;
+        final firstCell = row[0].toString().trim();
+        return !firstCell.startsWith('#');
+      }).toList();
+      
+      if (rowsSinComentarios.isEmpty) {
+        return {
+          'success': false,
+          'message': 'El archivo CSV no tiene datos válidos',
+          'count': 0,
+        };
+      }
+      
+      // Verificar si tiene columna TIPO (formato unificado)
+      final hasTypeColumn = rowsSinComentarios.first.any((cell) => 
+        cell.toString().toUpperCase() == 'TIPO'
+      );
+      
+      debugPrint('📌 ¿Formato unificado (con TIPO)? $hasTypeColumn');
+      
+      if (hasTypeColumn) {
+        return await _procesarCSVUnificado(rowsSinComentarios);
+      } else {
+        return await _procesarCSVProductos(rowsSinComentarios);
+      }
+      
+    } catch (e) {
+      debugPrint('❌ Error procesando CSV: $e');
+      
+      String mensajeError = '❌ Error al procesar CSV\n\n';
+      
+      if (e.toString().contains('FormatException')) {
+        mensajeError += 'El archivo tiene un formato incorrecto.\n\n'
+            '💡 Verifica que:\n'
+            '- Los datos estén separados por comas\n'
+            '- No haya líneas vacías al final\n'
+            '- Los decimales usen punto (.) no coma (,)';
+      } else {
+        mensajeError = 'Error: ${e.toString()}';
+      }
+      
+      return {
+        'success': false,
+        'message': mensajeError,
+        'count': 0,
+      };
+    }
+  }
+
+  /// Procesar CSV unificado con columna TIPO (productos y clientes)
+  static Future<Map<String, dynamic>> _procesarCSVUnificado(List<List<dynamic>> rows) async {
+    debugPrint('🔄 Procesando CSV unificado (productos + clientes)...');
+    
+    // La primera fila son los encabezados
+    final headers = rows.first.map((e) => e.toString().toUpperCase()).toList();
+    final tipoIndex = headers.indexOf('TIPO');
+    
+    if (tipoIndex == -1) {
+      return {
+        'success': false,
+        'message': 'No se encontró la columna TIPO en el archivo',
+        'count': 0,
+      };
+    }
+    
+    final dataRows = rows.skip(1).toList();
+    debugPrint('📊 Filas de datos a procesar: ${dataRows.length}');
+    
+    final db = await DbHelper.instance.database;
+    
+    int productosImportados = 0;
+    int productosActualizados = 0;
+    int clientesImportados = 0;
+    int clientesActualizados = 0;
+    int filasOmitidas = 0;
+    int totalFilasProcesadas = 0;
+    
+    await db.transaction((txn) async {
+      for (var row in dataRows) {
+        totalFilasProcesadas++;
+        
+        try {
+          if (row.length <= tipoIndex) {
+            filasOmitidas++;
+            continue;
+          }
+          
+          final tipo = row[tipoIndex].toString().trim().toUpperCase();
+          
+          if (tipo == 'PRODUCTO') {
+            // Procesar producto
+            final result = await _procesarFilaProducto(txn, row, tipoIndex);
+            if (result == 'nuevo') { productosImportados++;
+            }else if (result == 'actualizado'){ productosActualizados++;
+            }else{ filasOmitidas++;
+              filasOmitidas++;
+            }
+          } else if (tipo == 'CLIENTE') {
+            // Procesar cliente
+            final result = await _procesarFilaCliente(txn, row, tipoIndex);
+            if (result == 'nuevo'){ clientesImportados++;
+            }else if (result == 'actualizado'){ clientesActualizados++;
+            }else { filasOmitidas++; }
+          } else {
+            debugPrint('⚠️ Fila $totalFilasProcesadas: tipo desconocido "$tipo"');
+            filasOmitidas++;
+          }
+        } catch (e) {
+          debugPrint('❌ Error procesando fila $totalFilasProcesadas: $e');
+          filasOmitidas++;
+        }
+      }
+    });
+    
+    final totalProcesados = productosImportados + productosActualizados + 
+                           clientesImportados + clientesActualizados;
+    
+    debugPrint('📊 Resumen CSV Unificado:');
+    debugPrint('   PRODUCTOS:');
+    debugPrint('   - Nuevos: $productosImportados');
+    debugPrint('   - Actualizados: $productosActualizados');
+    debugPrint('   CLIENTES:');
+    debugPrint('   - Nuevos: $clientesImportados');
+    debugPrint('   - Actualizados: $clientesActualizados');
+    debugPrint('   - Omitidos: $filasOmitidas');
+    
+    String mensaje = '';
+    if (totalProcesados > 0) {
+      mensaje = '✅ Importación exitosa\n\n';
+      
+      if (productosImportados > 0 || productosActualizados > 0) {
+        mensaje += '📦 PRODUCTOS:\n';
+        if (productosImportados > 0) mensaje += '  🆕 Nuevos: $productosImportados\n';
+        if (productosActualizados > 0) mensaje += '  ✏️ Actualizados: $productosActualizados\n';
+        mensaje += '\n';
+      }
+      
+      if (clientesImportados > 0 || clientesActualizados > 0) {
+        mensaje += '👥 CLIENTES:\n';
+        if (clientesImportados > 0) mensaje += '  🆕 Nuevos: $clientesImportados\n';
+        if (clientesActualizados > 0) mensaje += '  ✏️ Actualizados: $clientesActualizados\n';
+        mensaje += '\n';
+      }
+      
+      if (filasOmitidas > 0) {
+        mensaje += '⚠️ Omitidos: $filasOmitidas';
+      }
+    } else {
+      mensaje = '⚠️ No se importaron datos\n\n'
+          'Verifica que el archivo tenga el formato correcto';
+    }
+    
+    return {
+      'success': totalProcesados > 0,
+      'message': mensaje,
+      'count': totalProcesados,
+    };
+  }
+
+  /// Procesar fila de producto
+  static Future<String> _procesarFilaProducto(
+    Transaction txn, 
+    List<dynamic> row, 
+    int tipoIndex
+  ) async {
+    // TIPO, CodArticulo, CodBarras, Nombre, Precio, Stock
+    if (row.length < tipoIndex + 5) return 'omitido';
+    
+    final codArt = row[tipoIndex + 1].toString().trim();
+    final codBar = row[tipoIndex + 2].toString().trim();
+    final nombre = row[tipoIndex + 3].toString().trim();
+    final precioStr = row[tipoIndex + 4].toString().trim();
+    final stockStr = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim() : '0';
+    
+    if (codArt.isEmpty || nombre.isEmpty) return 'omitido';
+    
+    final precio = double.tryParse(precioStr.replaceAll(',', '.')) ?? 0.0;
+    final stock = double.tryParse(stockStr.replaceAll(',', '.')) ?? 0.0;
+    
+    debugPrint('📦 Producto: $codArt - $nombre - \$$precio - Stock: $stock');
+    
+    final existingProduct = await txn.query(
+      'productos',
+      where: 'cod_articulo = ?',
+      whereArgs: [codArt],
+      limit: 1,
+    );
+    
+    if (existingProduct.isNotEmpty) {
+      final productoId = existingProduct.first['id'] as int;
+      await txn.update(
+        'productos',
+        {
+          'cod_barras': codBar,
+          'nombre': nombre,
+          'precio': precio,
+        },
+        where: 'id = ?',
+        whereArgs: [productoId],
+      );
+      
+      await txn.update(
+        'existencias',
+        {
+          'stock': stock,
+          'ultima_actualizacion': DateTime.now().toIso8601String(),
+        },
+        where: 'producto_id = ?',
+        whereArgs: [productoId],
+      );
+      
+      return 'actualizado';
+    } else {
+      final productoId = await txn.insert('productos', {
+        'cod_articulo': codArt,
+        'cod_barras': codBar,
+        'nombre': nombre,
+        'precio': precio,
+        'fecha_creacion': DateTime.now().toIso8601String(),
+      });
+      
+      await txn.insert('existencias', {
+        'producto_id': productoId,
+        'cod_articulo': codArt,
+        'stock': stock,
+        'ultima_actualizacion': DateTime.now().toIso8601String(),
+      });
+      
+      return 'nuevo';
+    }
+  }
+
+  /// Procesar fila de cliente
+  static Future<String> _procesarFilaCliente(
+    Transaction txn, 
+    List<dynamic> row, 
+    int tipoIndex
+  ) async {
+    // TIPO, Identificacion, Nombre, Correo, Direccion
+    if (row.length < tipoIndex + 3) return 'omitido';
+    
+    final identificacion = row[tipoIndex + 1].toString().trim();
+    final nombre = row[tipoIndex + 2].toString().trim();
+    final correo = row.length > tipoIndex + 3 ? row[tipoIndex + 3].toString().trim() : '';
+    final direccion = row.length > tipoIndex + 4 ? row[tipoIndex + 4].toString().trim() : '';
+    
+    if (identificacion.isEmpty || nombre.isEmpty) return 'omitido';
+    
+    debugPrint('👤 Cliente: $identificacion - $nombre');
+    
+    final existingClient = await txn.query(
+      'clientes',
+      where: 'identificacion = ?',
+      whereArgs: [identificacion],
+      limit: 1,
+    );
+    
+    if (existingClient.isNotEmpty) {
+      await txn.update(
+        'clientes',
+        {
+          'nombre': nombre,
+          'correo': correo.isEmpty ? null : correo,
+          'direccion': direccion.isEmpty ? null : direccion,
+        },
+        where: 'identificacion = ?',
+        whereArgs: [identificacion],
+      );
+      
+      return 'actualizado';
+    } else {
+      await txn.insert('clientes', {
+        'identificacion': identificacion,
+        'nombre': nombre,
+        'correo': correo.isEmpty ? null : correo,
+        'direccion': direccion.isEmpty ? null : direccion,
+        'fecha_creacion': DateTime.now().toIso8601String(),
+      });
+      
+      return 'nuevo';
+    }
+  }
+
+  /// Procesar CSV de solo productos (formato antiguo)
+  static Future<Map<String, dynamic>> _procesarCSVProductos(List<List<dynamic>> rows) async {
+    try {
+      debugPrint('🔄 Procesando CSV de productos (formato antiguo)...');
+      
       // Verificar si tiene cabeceras
       final hasHeaders = rows.first.any((cell) => 
         cell.toString().toLowerCase().contains('codigo') ||
@@ -452,7 +742,7 @@ class ExcelService {
             }
 
             // Extraer datos
-            final codArt = row.length > 0 ? row[0].toString().trim() : '';
+            final codArt = row.isNotEmpty ? row[0].toString().trim() : '';
             final codBar = row.length > 1 ? row[1].toString().trim() : '';
             final nombre = row.length > 2 ? row[2].toString().trim() : '';
             final precioStr = row.length > 3 ? row[3].toString().trim() : '0';

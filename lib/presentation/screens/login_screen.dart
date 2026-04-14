@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_assets.dart';
 import '../../core/theme/theme_provider.dart';
@@ -22,7 +20,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _rememberMe = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -32,11 +29,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _tasaUSDController = TextEditingController(text: '36.50');
   final _tasaEURController = TextEditingController(text: '40.00');
   final _tasaCOPController = TextEditingController(text: '0.012');
-  
-  // URLs para obtener tasas de cambio
-  static const String apiTasasUrlUSD = 'https://api.exchangerate-api.com/v4/latest/USD';
-  static const String apiTasasUrlEUR = 'https://api.exchangerate-api.com/v4/latest/EUR';
-  static const String apiTasasUrlCOP = 'https://api.exchangerate-api.com/v4/latest/COP';
 
   @override
   void initState() {
@@ -106,72 +98,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
-  Future<void> _updateRatesFromAPI() async {
-    try {
-      final tasas = await _obtenerTodasLasTasas();
-      
-      if (mounted) {
-        setState(() {
-          if (tasas['USD'] != null) {
-            _tasaUSDController.text = tasas['USD']!.toStringAsFixed(2);
-          }
-          if (tasas['EUR'] != null) {
-            _tasaEURController.text = tasas['EUR']!.toStringAsFixed(2);
-          }
-          if (tasas['COP'] != null) {
-            _tasaCOPController.text = tasas['COP']!.toStringAsFixed(4);
-          }
-        });
-        
-        _showSnackBar('Tasas actualizadas desde API', AppColors.success);
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnackBar('Error al actualizar tasas: $e', AppColors.error);
-      }
-    }
-  }
-
-  Future<Map<String, double>> _obtenerTodasLasTasas() async {
-    final tasas = <String, double>{};
-    
-    try {
-      // 1. Obtener tasa USD a VES
-      final responseUSD = await http.get(Uri.parse(apiTasasUrlUSD)).timeout(const Duration(seconds: 10));
-      if (responseUSD.statusCode == 200) {
-        final dataUSD = jsonDecode(responseUSD.body);
-        final tasaUsdVes = (dataUSD['rates']['VES'] as num?)?.toDouble() ?? 0.0;
-        if (tasaUsdVes > 0) {
-          tasas['USD'] = tasaUsdVes;
-        }
-      }
-      
-      // 2. Obtener tasa EUR a VES
-      final responseEUR = await http.get(Uri.parse(apiTasasUrlEUR)).timeout(const Duration(seconds: 10));
-      if (responseEUR.statusCode == 200) {
-        final dataEUR = jsonDecode(responseEUR.body);
-        final tasaEurVes = (dataEUR['rates']['VES'] as num?)?.toDouble() ?? 0.0;
-        if (tasaEurVes > 0) {
-          tasas['EUR'] = tasaEurVes;
-        }
-      }
-      
-      // 3. Obtener tasa COP a VES
-      final responseCOP = await http.get(Uri.parse(apiTasasUrlCOP)).timeout(const Duration(seconds: 10));
-      if (responseCOP.statusCode == 200) {
-        final dataCOP = jsonDecode(responseCOP.body);
-        final tasaCopVes = (dataCOP['rates']['VES'] as num?)?.toDouble() ?? 0.0;
-        if (tasaCopVes > 0) {
-          tasas['COP'] = tasaCopVes;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error obteniendo tasas: $e');
-    }
-    
-    return tasas;
-  }
-
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -185,7 +111,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   void _showConfigDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    bool isUpdatingRates = false;
     
     showDialog(
       context: context,
@@ -212,147 +137,134 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                 ],
               ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'URL del Servidor',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _urlController,
-                      decoration: InputDecoration(
-                        hintText: 'https://api.ejemplo.com',
-                        prefixIcon: const Icon(Icons.link),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'URL del Servidor',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
                         ),
-                        filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
                       ),
-                      keyboardType: TextInputType.url,
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Tasas de Cambio',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? AppColors.darkText : AppColors.lightText,
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _urlController,
+                        decoration: InputDecoration(
+                          hintText: 'https://api.ejemplo.com',
+                          prefixIcon: const Icon(Icons.link, size: 20),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
+                          filled: true,
+                          fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
                         ),
-                        TextButton.icon(
-                          onPressed: isUpdatingRates ? null : () async {
-                            setDialogState(() => isUpdatingRates = true);
-                            await _updateRatesFromAPI();
-                            setDialogState(() => isUpdatingRates = false);
-                          },
-                          icon: isUpdatingRates
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.refresh, size: 18),
-                          label: Text(
-                            isUpdatingRates ? 'Actualizando...' : 'Actualizar',
-                            style: const TextStyle(fontSize: 12),
+                        keyboardType: TextInputType.url,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Tasas de Cambio',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _tasaUSDController,
+                        decoration: InputDecoration(
+                          labelText: 'Tasa USD (Dólar)',
+                          labelStyle: const TextStyle(fontSize: 13),
+                          prefixIcon: const Icon(Icons.attach_money, size: 20),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
+                          filled: true,
+                          fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _tasaUSDController,
-                      decoration: InputDecoration(
-                        labelText: 'Tasa USD (Dólar)',
-                        prefixIcon: const Icon(Icons.attach_money),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _tasaEURController,
-                      decoration: InputDecoration(
-                        labelText: 'Tasa EUR (Euro)',
-                        prefixIcon: const Icon(Icons.euro),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _tasaCOPController,
-                      decoration: InputDecoration(
-                        labelText: 'Tasa COP (Peso Colombiano)',
-                        prefixIcon: const Icon(Icons.monetization_on),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,4}')),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.info.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppColors.info.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.info_outline,
-                            color: AppColors.info,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Los cambios se guardarán localmente y se usarán en los cálculos',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                              ),
-                            ),
-                          ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _tasaEURController,
+                        decoration: InputDecoration(
+                          labelText: 'Tasa EUR (Euro)',
+                          labelStyle: const TextStyle(fontSize: 13),
+                          prefixIcon: const Icon(Icons.euro, size: 20),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          filled: true,
+                          fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _tasaCOPController,
+                        decoration: InputDecoration(
+                          labelText: 'Tasa COP (Peso Col.)',
+                          labelStyle: const TextStyle(fontSize: 13),
+                          prefixIcon: const Icon(Icons.monetization_on, size: 20),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          filled: true,
+                          fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,4}')),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.info.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppColors.info.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: AppColors.info,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Las tasas se cargan automáticamente al iniciar',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -470,6 +382,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final isTablet = size.width > 600;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false, // El teclado se superpone sin redimensionar
       body: Stack(
         children: [
           Container(
@@ -483,130 +396,150 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
             ),
             child: SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(isTablet ? 48.0 : 24.0),
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: Container(
-                        constraints: BoxConstraints(maxWidth: isTablet ? 500 : double.infinity),
-                        child: Card(
-                          elevation: 8,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(isTablet ? 48.0 : 32.0),
-                            child: Form(
-                              key: _formKey,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Logo
-                                  if (AppAssets.logoPath != null)
-                                    Image.asset(
-                                      AppAssets.logoPath!,
-                                      height: isTablet ? 120 : 80,
-                                      fit: BoxFit.contain,
-                                      cacheWidth: isTablet ? 240 : 160, // Optimización de caché
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return Icon(
-                                          Icons.image_not_supported,
-                                          size: isTablet ? 120 : 80,
-                                          color: Colors.grey,
-                                        );
-                                      },
-                                    ),
-                                  SizedBox(height: isTablet ? 32 : 24),
-
-                                  // Título
-                                  Text(
-                                    'POS ANDROID',
-                                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                          color: isDark ? Colors.white : AppColors.primary,
-                                        ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isTablet ? 48.0 : 32.0,
+                  vertical: 16.0,
+                ),
+                child: Column(
+                  children: [
+                    // Espacio para los botones flotantes
+                    const SizedBox(height: 60),
+                    
+                    // Contenido centrado
+                    Expanded(
+                      child: Center(
+                        child: FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: SlideTransition(
+                            position: _slideAnimation,
+                            child: Container(
+                              constraints: BoxConstraints(
+                                maxWidth: isTablet ? 600 : 500,
+                              ),
+                              child: Card(
+                                elevation: 12,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isTablet ? 64.0 : 40.0,
+                                    vertical: isTablet ? 56.0 : 40.0,
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Sistema de Punto de Venta',
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                          color: Colors.grey,
-                                        ),
-                                  ),
-                                  SizedBox(height: isTablet ? 48 : 32),
+                                  child: Form(
+                                    key: _formKey,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Logo más grande
+                                        if (AppAssets.logoPath != null)
+                                          Image.asset(
+                                            AppAssets.logoPath!,
+                                            height: isTablet ? 160 : 120,
+                                            fit: BoxFit.contain,
+                                            cacheWidth: isTablet ? 320 : 240,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Icon(
+                                                Icons.image_not_supported,
+                                                size: isTablet ? 160 : 120,
+                                                color: Colors.grey,
+                                              );
+                                            },
+                                          ),
+                                        SizedBox(height: isTablet ? 36 : 28),
 
-                                  // Campo de contraseña
-                                  TextFormField(
-                                    controller: _passwordController,
-                                    obscureText: _obscurePassword,
-                                    decoration: InputDecoration(
-                                      labelText: 'Contraseña',
-                                      prefixIcon: const Icon(Icons.lock_outline),
-                                      suffixIcon: IconButton(
-                                        icon: Icon(
-                                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                        // Título más grande
+                                        Text(
+                                          'POS ANDROID',
+                                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: isTablet ? 36 : 30,
+                                                color: isDark ? Colors.white : AppColors.primary,
+                                              ),
                                         ),
-                                        onPressed: () {
-                                          setState(() => _obscurePassword = !_obscurePassword);
-                                        },
-                                      ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Contraseña requerida';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // Recordar contraseña
-                                  Row(
-                                    children: [
-                                      Checkbox(
-                                        value: _rememberMe,
-                                        onChanged: (value) {
-                                          setState(() => _rememberMe = value ?? false);
-                                        },
-                                      ),
-                                      const Text('Recordar contraseña'),
-                                    ],
-                                  ),
-                                  SizedBox(height: isTablet ? 32 : 24),
-
-                                  // Botón de login
-                                  SizedBox(
-                                    width: double.infinity,
-                                    height: 56,
-                                    child: ElevatedButton(
-                                      onPressed: _isLoading ? null : _handleLogin,
-                                      style: ElevatedButton.styleFrom(
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Sistema de Punto de Venta',
+                                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                                fontSize: isTablet ? 18 : 16,
+                                                color: Colors.grey,
+                                              ),
                                         ),
-                                      ),
-                                      child: _isLoading
-                                          ? const CircularProgressIndicator(color: Colors.white)
-                                          : const Text(
-                                              'Iniciar Sesión',
-                                              style: TextStyle(fontSize: 18),
+                                        SizedBox(height: isTablet ? 48 : 36),
+
+                                        // Campo de contraseña más grande
+                                        TextFormField(
+                                          controller: _passwordController,
+                                          obscureText: _obscurePassword,
+                                          style: TextStyle(fontSize: isTablet ? 18 : 16),
+                                          decoration: InputDecoration(
+                                            labelText: 'Contraseña',
+                                            labelStyle: TextStyle(fontSize: isTablet ? 18 : 16),
+                                            prefixIcon: Icon(
+                                              Icons.lock_outline,
+                                              size: isTablet ? 28 : 24,
                                             ),
+                                            suffixIcon: IconButton(
+                                              icon: Icon(
+                                                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                                size: isTablet ? 28 : 24,
+                                              ),
+                                              onPressed: () {
+                                                setState(() => _obscurePassword = !_obscurePassword);
+                                              },
+                                            ),
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(16),
+                                            ),
+                                            contentPadding: EdgeInsets.symmetric(
+                                              horizontal: isTablet ? 24 : 20,
+                                              vertical: isTablet ? 20 : 16,
+                                            ),
+                                          ),
+                                          validator: (value) {
+                                            if (value == null || value.isEmpty) {
+                                              return 'Contraseña requerida';
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                        SizedBox(height: isTablet ? 36 : 28),
+
+                                        // Botón de login más grande
+                                        SizedBox(
+                                          width: double.infinity,
+                                          height: isTablet ? 64 : 56,
+                                          child: ElevatedButton(
+                                            onPressed: _isLoading ? null : _handleLogin,
+                                            style: ElevatedButton.styleFrom(
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(16),
+                                              ),
+                                              elevation: 4,
+                                            ),
+                                            child: _isLoading
+                                                ? const CircularProgressIndicator(color: Colors.white)
+                                                : Text(
+                                                    'Iniciar Sesión',
+                                                    style: TextStyle(
+                                                      fontSize: isTablet ? 20 : 18,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                          ),
+                                        ),
+                                            ],
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),

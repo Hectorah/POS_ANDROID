@@ -93,7 +93,7 @@ class DbHelper {
 
     return await openDatabase(
       path,
-      version: 1, // Iniciamos en versión 1
+      version: 3, // Actualizado a versión 3 para agregar tabla de cierres de lote
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -178,6 +178,17 @@ class DbHelper {
         tasa_usd $numType,
         tasa_eur $numType,
         total $numType,
+        metodo_pago $textType,
+        referencia_pago $textNull,
+        monto_bs $numType,
+        monto_usd $numType,
+        ubii_reference $textNull,
+        ubii_auth_code $textNull,
+        ubii_card_type $textNull,
+        ubii_terminal $textNull,
+        ubii_lote $textNull,
+        ubii_response_code $textNull,
+        ubii_response_message $textNull,
         FOREIGN KEY (cliente_id) REFERENCES clientes (id),
         FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
       )
@@ -194,6 +205,26 @@ class DbHelper {
         subtotal $numType,
         FOREIGN KEY (factura_id) REFERENCES factura (id) ON DELETE CASCADE,
         FOREIGN KEY (producto_id) REFERENCES productos (id)
+      )
+    ''');
+
+    // 7. TABLA CIERRES DE LOTE (Settlement)
+    await db.execute('''
+      CREATE TABLE cierres_lote (
+        id $idType,
+        fecha_creacion $dateType,
+        usuario_id INTEGER NOT NULL,
+        tipo_cierre $textType,
+        ubii_response_code $textNull,
+        ubii_response_message $textNull,
+        ubii_terminal $textNull,
+        ubii_lote $textNull,
+        ubii_fecha $textNull,
+        ubii_hora $textNull,
+        total_transacciones INTEGER DEFAULT 0,
+        monto_total $numType,
+        datos_completos $textNull,
+        FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
       )
     ''');
 
@@ -236,8 +267,52 @@ class DbHelper {
 
   // Método para futuras actualizaciones sin perder datos
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Aquí agregarás bloques 'if' cuando subas la versión a 2, 3, etc.
-    // Ejemplo: if (oldVersion < 2) { ... }
+    debugPrint('🔄 Actualizando base de datos de v$oldVersion a v$newVersion');
+    
+    // Migración de versión 1 a 2: Agregar campos de pago
+    if (oldVersion < 2) {
+      debugPrint('📝 Agregando campos de pago a tabla factura...');
+      
+      await db.execute('ALTER TABLE factura ADD COLUMN metodo_pago TEXT NOT NULL DEFAULT "cash"');
+      await db.execute('ALTER TABLE factura ADD COLUMN referencia_pago TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN monto_bs REAL NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE factura ADD COLUMN monto_usd REAL NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_reference TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_auth_code TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_card_type TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_terminal TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_lote TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_response_code TEXT');
+      await db.execute('ALTER TABLE factura ADD COLUMN ubii_response_message TEXT');
+      
+      debugPrint('✅ Campos de pago agregados exitosamente');
+    }
+    
+    // Migración de versión 2 a 3: Agregar tabla de cierres de lote
+    if (oldVersion < 3) {
+      debugPrint('📝 Creando tabla de cierres de lote...');
+      
+      await db.execute('''
+        CREATE TABLE cierres_lote (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP,
+          usuario_id INTEGER NOT NULL,
+          tipo_cierre TEXT NOT NULL,
+          ubii_response_code TEXT,
+          ubii_response_message TEXT,
+          ubii_terminal TEXT,
+          ubii_lote TEXT,
+          ubii_fecha TEXT,
+          ubii_hora TEXT,
+          total_transacciones INTEGER DEFAULT 0,
+          monto_total REAL NOT NULL DEFAULT 0,
+          datos_completos TEXT,
+          FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+        )
+      ''');
+      
+      debugPrint('✅ Tabla de cierres de lote creada exitosamente');
+    }
   }
 
   // --- MÉTODOS DE AYUDA (CRUD básico) ---
@@ -419,6 +494,17 @@ class DbHelper {
     required double tasaEur,
     required double total,
     required List<Map<String, dynamic>> detalles,
+    required String metodoPago,
+    String? referenciaPago,
+    required double montoBs,
+    required double montoUsd,
+    String? ubiiReference,
+    String? ubiiAuthCode,
+    String? ubiiCardType,
+    String? ubiiTerminal,
+    String? ubiiLote,
+    String? ubiiResponseCode,
+    String? ubiiResponseMessage,
   }) async {
     final db = await database;
     int facturaId = 0;
@@ -432,6 +518,17 @@ class DbHelper {
         'tasa_usd': tasaUsd,
         'tasa_eur': tasaEur,
         'total': total,
+        'metodo_pago': metodoPago,
+        'referencia_pago': referenciaPago,
+        'monto_bs': montoBs,
+        'monto_usd': montoUsd,
+        'ubii_reference': ubiiReference,
+        'ubii_auth_code': ubiiAuthCode,
+        'ubii_card_type': ubiiCardType,
+        'ubii_terminal': ubiiTerminal,
+        'ubii_lote': ubiiLote,
+        'ubii_response_code': ubiiResponseCode,
+        'ubii_response_message': ubiiResponseMessage,
       });
 
       // Insertar detalles y actualizar stock
@@ -485,11 +582,9 @@ class DbHelper {
     
     return await db.rawQuery('''
       SELECT 
-        f.id,
-        f.fecha_creacion,
-        f.total,
+        f.*,
         c.nombre as cliente_nombre,
-        c.identificacion as cliente_id,
+        c.identificacion as cliente_identificacion,
         u.nombre as usuario_nombre
       FROM factura f
       INNER JOIN clientes c ON f.cliente_id = c.id
@@ -498,6 +593,22 @@ class DbHelper {
       ORDER BY f.fecha_creacion DESC
       ${limit != null ? 'LIMIT $limit' : ''}
     ''', whereArgs);
+  }
+
+  /// Obtener detalles de productos de una factura
+  Future<List<Map<String, dynamic>>> obtenerDetallesFactura(int facturaId) async {
+    final db = await database;
+    
+    return await db.rawQuery('''
+      SELECT 
+        fd.*,
+        p.nombre as producto_nombre,
+        p.cod_articulo as producto_codigo
+      FROM factura_detalle fd
+      INNER JOIN productos p ON fd.producto_id = p.id
+      WHERE fd.factura_id = ?
+      ORDER BY fd.id ASC
+    ''', [facturaId]);
   }
 
   /// Obtener detalle de una factura
@@ -601,10 +712,140 @@ class DbHelper {
     await db.transaction((txn) async {
       await txn.delete('factura_detalle');
       await txn.delete('factura');
+      await txn.delete('cierres_lote');
       await txn.delete('existencias');
       await txn.delete('productos');
       await txn.delete('clientes');
       await txn.delete('usuarios');
     });
   }
+
+  // ============================================================================
+  // MÉTODOS CRUD PARA CIERRES DE LOTE
+  // ============================================================================
+
+  /// Registrar un cierre de lote
+  Future<int> registrarCierreLote({
+    required int usuarioId,
+    required String tipoCierre,
+    required Map<String, dynamic> ubiiData,
+  }) async {
+    final db = await database;
+    
+    try {
+      // Convertir datos completos a JSON para almacenamiento
+      final datosCompletos = ubiiData.toString();
+      
+      final cierreId = await db.insert('cierres_lote', {
+        'fecha_creacion': DateTime.now().toIso8601String(),
+        'usuario_id': usuarioId,
+        'tipo_cierre': tipoCierre,
+        'ubii_response_code': ubiiData['code'],
+        'ubii_response_message': ubiiData['message'],
+        'ubii_terminal': ubiiData['terminal'],
+        'ubii_lote': ubiiData['lote'],
+        'ubii_fecha': ubiiData['date'],
+        'ubii_hora': ubiiData['time'],
+        'total_transacciones': ubiiData['totalTransactions'] ?? 0,
+        'monto_total': ubiiData['totalAmount'] ?? 0.0,
+        'datos_completos': datosCompletos,
+      });
+      
+      debugPrint('✅ Cierre de lote registrado con ID: $cierreId');
+      debugPrint('   Usuario ID: $usuarioId');
+      debugPrint('   Tipo: $tipoCierre');
+      debugPrint('   Terminal: ${ubiiData['terminal']}');
+      debugPrint('   Lote: ${ubiiData['lote']}');
+      
+      return cierreId;
+    } catch (e) {
+      debugPrint('❌ Error registrando cierre de lote: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtener todos los cierres de lote con filtros opcionales
+  Future<List<Map<String, dynamic>>> obtenerCierresLote({
+    DateTime? desde,
+    DateTime? hasta,
+    int? limit,
+  }) async {
+    final db = await database;
+    
+    String whereClause = '';
+    List<dynamic> whereArgs = [];
+    
+    if (desde != null) {
+      whereClause += 'c.fecha_creacion >= ?';
+      whereArgs.add(desde.toIso8601String());
+    }
+    
+    if (hasta != null) {
+      if (whereClause.isNotEmpty) whereClause += ' AND ';
+      whereClause += 'c.fecha_creacion <= ?';
+      whereArgs.add(hasta.toIso8601String());
+    }
+    
+    return await db.rawQuery('''
+      SELECT 
+        c.*,
+        u.nombre as usuario_nombre
+      FROM cierres_lote c
+      INNER JOIN usuarios u ON c.usuario_id = u.id
+      ${whereClause.isNotEmpty ? 'WHERE $whereClause' : ''}
+      ORDER BY c.fecha_creacion DESC
+      ${limit != null ? 'LIMIT $limit' : ''}
+    ''', whereArgs);
+  }
+
+  /// Obtener el último cierre de lote
+  Future<Map<String, dynamic>?> obtenerUltimoCierre() async {
+    final db = await database;
+    
+    final results = await db.rawQuery('''
+      SELECT 
+        c.*,
+        u.nombre as usuario_nombre
+      FROM cierres_lote c
+      INNER JOIN usuarios u ON c.usuario_id = u.id
+      ORDER BY c.fecha_creacion DESC
+      LIMIT 1
+    ''');
+    
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  /// Obtener cierres de lote de hoy
+  Future<List<Map<String, dynamic>>> obtenerCierresDeHoy() async {
+    final hoy = DateTime.now();
+    final inicioDelDia = DateTime(hoy.year, hoy.month, hoy.day);
+    final finDelDia = DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59);
+    
+    return await obtenerCierresLote(
+      desde: inicioDelDia,
+      hasta: finDelDia,
+    );
+  }
+
+  /// Verificar si ya se hizo cierre hoy
+  Future<bool> yaSeHizoCierreHoy() async {
+    final cierresHoy = await obtenerCierresDeHoy();
+    return cierresHoy.isNotEmpty;
+  }
+
+  /// Obtener estadísticas de cierres
+  Future<Map<String, dynamic>> obtenerEstadisticasCierres() async {
+    final db = await database;
+    
+    final totalCierres = await db.rawQuery('SELECT COUNT(*) as count FROM cierres_lote');
+    final montoTotal = await db.rawQuery('SELECT SUM(monto_total) as total FROM cierres_lote');
+    final ultimoCierre = await obtenerUltimoCierre();
+    
+    return {
+      'total_cierres': Sqflite.firstIntValue(totalCierres) ?? 0,
+      'monto_total_acumulado': (montoTotal.first['total'] as double?) ?? 0.0,
+      'ultimo_cierre': ultimoCierre,
+    };
+  }
 }
+

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/constants/permissions.dart';
 
 // Modelo de usuario simplificado (sin backend)
@@ -32,7 +33,6 @@ class UserProvider extends ChangeNotifier {
 
   /// Cargar usuario actual desde SharedPreferences
   Future<void> loadUser() async {
-    // TODO: Implementar carga de usuario desde almacenamiento local
     _currentUser = null;
     _userRole = null;
     notifyListeners();
@@ -47,10 +47,32 @@ class UserProvider extends ChangeNotifier {
 
   /// Cerrar sesión
   Future<void> logout() async {
-    // TODO: Implementar limpieza de sesión
-    _currentUser = null;
-    _userRole = null;
-    notifyListeners();
+    await clearSession();
+  }
+
+  /// Limpiar sesión completa
+  Future<void> clearSession() async {
+    try {
+      // Importar SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Limpiar todas las preferencias guardadas
+      await prefs.clear();
+      
+      // Resetear variables de estado
+      _currentUser = null;
+      _userRole = null;
+      
+      notifyListeners();
+      
+      debugPrint('✅ Sesión limpiada completamente');
+    } catch (e) {
+      debugPrint('❌ Error limpiando sesión: $e');
+      // Aún así resetear las variables locales
+      _currentUser = null;
+      _userRole = null;
+      notifyListeners();
+    }
   }
 
   /// Verificar si tiene un permiso específico

@@ -9,6 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  #SUPABASE
+  supabase_flutter: ^2.12.2
+
+  #intent 
+  android_intent_plus: ^6.0.0
   
   # UI & Responsive
   flutter_screenutil: ^5.9.0
@@ -41,6 +47,10 @@ dependencies:
   intl: ^0.18.1
   crypto: ^3.0.3  # Para hashear contraseñas
   http: ^1.2.0    # Para llamadas API (tasas de cambio)
+  
+  # Ubii Pago Móvil
+  encrypt: ^5.0.3       # Para cifrado AES-256
+  jwt_decoder: ^2.0.1   # Para decodificar JWT
 
 dev_dependencies:
   flutter_test:

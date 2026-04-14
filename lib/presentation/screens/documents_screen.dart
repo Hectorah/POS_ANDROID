@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/theme/theme_provider.dart';
+import '../../database/db_helper.dart';
 import '../../providers/user_provider.dart';
 import '../../services/excel_service.dart';
-import 'create_document_screen.dart';
+import 'create_document_screen.dart' show CreateDocumentScreen, CurrencyFormatter;
+import 'admin_cierre_lote_screen.dart';
 
 class DocumentsScreen extends StatefulWidget {
   const DocumentsScreen({super.key});
@@ -17,11 +19,37 @@ class DocumentsScreen extends StatefulWidget {
 class _DocumentsScreenState extends State<DocumentsScreen> {
   bool _isCheckingProducts = true;
   bool _isImporting = false;
+  bool _isLoadingInvoices = true;
+  List<Map<String, dynamic>> _invoices = [];
 
   @override
   void initState() {
     super.initState();
     _checkAndShowWelcomeModal();
+    _loadInvoices();
+  }
+
+  /// Cargar las últimas 10 facturas
+  Future<void> _loadInvoices() async {
+    try {
+      setState(() => _isLoadingInvoices = true);
+      
+      final invoices = await DbHelper.instance.obtenerFacturas(limit: 10);
+      
+      if (mounted) {
+        setState(() {
+          _invoices = invoices;
+          _isLoadingInvoices = false;
+        });
+      }
+      
+      debugPrint('✅ ${_invoices.length} facturas cargadas');
+    } catch (e) {
+      debugPrint('❌ Error cargando facturas: $e');
+      if (mounted) {
+        setState(() => _isLoadingInvoices = false);
+      }
+    }
   }
 
   /// Verificar si es la primera vez y mostrar modal de bienvenida
@@ -363,6 +391,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
         automaticallyImplyLeading: false,
         actions: [
+          // Botón para cierre de lote
+          IconButton(
+            icon: Icon(
+              Icons.receipt_long,
+              color: isDark ? AppColors.darkText : AppColors.primary,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminCierreLoteScreen(),
+                ),
+              );
+            },
+            tooltip: 'Cierre de Lote',
+          ),
           // Botón para importar productos manualmente
           IconButton(
             icon: Icon(
@@ -411,57 +455,143 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 ],
               ),
             )
-          : Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.description,
-                      size: 64,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Gestión de Documentos',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+          : _isLoadingInvoices
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Cargando facturas...',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Aquí podrás ver el historial de documentos emitidos',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    ],
+                  ),
+                )
+              : _invoices.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.description_outlined,
+                              size: 64,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No hay facturas',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? AppColors.darkText : AppColors.lightText,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Crea tu primera factura para comenzar',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 32),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const CreateDocumentScreen(),
+                                  ),
+                                );
+                                // Recargar facturas al volver
+                                _loadInvoices();
+                              },
+                              icon: const Icon(Icons.add),
+                              label: const Text('Crear Nueva Factura'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: AppColors.textLight,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const CreateDocumentScreen(),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadInvoices,
+                      child: Column(
+                        children: [
+                          // Header con título y botón
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Últimas Facturas',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_invoices.length} registros',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const CreateDocumentScreen(),
+                                      ),
+                                    );
+                                    // Recargar facturas al volver
+                                    _loadInvoices();
+                                  },
+                                  icon: const Icon(Icons.add, size: 20),
+                                  label: const Text('Nueva'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: AppColors.textLight,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Crear Nueva Factura'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.textLight,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          // Lista de facturas
+                          Expanded(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _invoices.length,
+                              itemBuilder: (context, index) {
+                                final invoice = _invoices[index];
+                                return _buildInvoiceCard(invoice, isDark);
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
     );
   }
 
@@ -487,66 +617,104 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     color: isDark ? AppColors.darkText : AppColors.primary,
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    'Importar Productos',
-                    style: TextStyle(
-                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                  Expanded(
+                    child: Text(
+                      'Importar Productos',
+                      style: TextStyle(
+                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        fontSize: 18,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Selecciona un archivo Excel (.xlsx) o CSV (.csv) con tus productos.',
-                    style: TextStyle(
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.info.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: AppColors.info.withValues(alpha: 0.3),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Selecciona un archivo Excel (.xlsx) o CSV (.csv) con tus productos.',
+                      style: TextStyle(
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        fontSize: 14,
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          color: AppColors.info,
-                          size: 20,
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.info.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.info.withValues(alpha: 0.3),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Formato: CodArticulo, CodBarras, Nombre, Precio, Stock',
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: AppColors.info,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Formato Excel requerido:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '• Columna A: CodArticulo\n'
+                            '• Columna B: CodBarras\n'
+                            '• Columna C: Nombre\n'
+                            '• Columna D: Precio\n'
+                            '• Columna E: Stock',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'La primera fila debe contener los encabezados.',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontStyle: FontStyle.italic,
                               color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (isImporting) ...[
-                    const SizedBox(height: 16),
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Importando...',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ],
                       ),
                     ),
+                    if (isImporting) ...[
+                      const SizedBox(height: 16),
+                      const Center(child: CircularProgressIndicator()),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Text(
+                          'Importando...',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
               actions: isImporting
                   ? []
@@ -574,9 +742,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                               
                               // Mostrar diálogo de éxito con detalles
                               _showSuccessDialog(
-                                '${resultado['nuevos'] ?? 0} nuevos',
-                                '${resultado['actualizados'] ?? 0} actualizados',
-                                '${resultado['omitidos'] ?? 0} omitidos',
+                                '${resultado['nuevos'] ?? 0}',
+                                '${resultado['actualizados'] ?? 0}',
+                                '${resultado['omitidos'] ?? 0}',
                               );
                             }
                           } else {
@@ -680,5 +848,475 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         );
       },
     );
+  }
+
+  /// Construir tarjeta de factura
+  Widget _buildInvoiceCard(Map<String, dynamic> invoice, bool isDark) {
+    final fecha = DateTime.parse(invoice['fecha_creacion']);
+    final metodoPago = invoice['metodo_pago'] ?? 'cash';
+    final total = invoice['total'] as double;
+    final clienteIdentificacion = invoice['cliente_identificacion'] ?? 'N/A';
+    final clienteNombre = invoice['cliente_nombre'] ?? 'Cliente';
+    
+    // Obtener referencia de Ubii si existe
+    final ubiiReference = invoice['ubii_reference'] as String?;
+    final referenciaPago = invoice['referencia_pago'] as String?;
+    
+    // Determinar qué mostrar como título
+    String titulo;
+    if (ubiiReference != null && ubiiReference.isNotEmpty) {
+      // Si hay referencia de Ubii, mostrarla
+      titulo = 'Ref: $ubiiReference';
+    } else if (referenciaPago != null && referenciaPago.isNotEmpty) {
+      // Si hay referencia de pago manual, mostrarla
+      titulo = 'Ref: $referenciaPago';
+    } else {
+      // Fallback: mostrar número de factura
+      titulo = 'Factura #${invoice['id']}';
+    }
+    
+    // Icono según método de pago
+    IconData paymentIcon;
+    Color paymentColor;
+    String paymentLabel;
+    
+    switch (metodoPago) {
+      case 'card':
+        paymentIcon = Icons.credit_card;
+        paymentColor = AppColors.info;
+        paymentLabel = 'Tarjeta';
+        break;
+      case 'pago_movil':
+        paymentIcon = Icons.phone_android;
+        paymentColor = AppColors.primary;
+        paymentLabel = 'Pago Móvil';
+        break;
+      case 'debit_immediate':
+        paymentIcon = Icons.account_balance;
+        paymentColor = AppColors.primaryDark;
+        paymentLabel = 'Débito Inm.';
+        break;
+      default:
+        paymentIcon = Icons.money;
+        paymentColor = AppColors.success;
+        paymentLabel = 'Efectivo';
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => _showInvoiceDetail(invoice),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Referencia con diseño especial (más pequeña)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.info.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.verified, size: 12, color: AppColors.info),
+                              const SizedBox(width: 4),
+                              Text(
+                                titulo,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.info,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.badge_outlined,
+                              size: 14,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              clienteIdentificacion,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: paymentColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(paymentIcon, size: 16, color: paymentColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          paymentLabel,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: paymentColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        CurrencyFormatter.formatBS(total, invoice['tasa_usd'] ?? 36.50),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.success,
+                        ),
+                      ),
+                      Text(
+                        CurrencyFormatter.formatUSD(total),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${fecha.day}/${fecha.month}/${fecha.year}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                      Text(
+                        '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Mostrar detalle de factura
+  void _showInvoiceDetail(Map<String, dynamic> invoice) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Cargar detalles de la factura
+    final detalles = await DbHelper.instance.obtenerDetallesFactura(invoice['id']);
+    
+    if (!mounted) return;
+    
+    final screenHeight = MediaQuery.of(context).size.height;
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext modalContext) => Container(
+        height: screenHeight * 0.85,
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkCard : AppColors.lightCard,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Factura #${invoice['id']}',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        invoice['cliente_identificacion'] ?? 'N/A',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                      Text(
+                        invoice['cliente_nombre'] ?? 'Cliente',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(modalContext),
+                  ),
+                ],
+              ),
+            ),
+            // Contenido
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Información general
+                    _buildDetailSection(
+                      'Información General',
+                      [
+                        _buildDetailRow('Fecha', _formatDateTime(invoice['fecha_creacion']), isDark),
+                        _buildDetailRow('Cliente', invoice['cliente_nombre'] ?? 'N/A', isDark),
+                        _buildDetailRow('Método de Pago', _getPaymentMethodLabel(invoice['metodo_pago']), isDark),
+                        if (invoice['referencia_pago'] != null && invoice['referencia_pago'].toString().isNotEmpty)
+                          _buildDetailRow('Referencia Manual', invoice['referencia_pago'], isDark),
+                        if (invoice['ubii_reference'] != null && invoice['ubii_reference'].toString().isNotEmpty)
+                          _buildDetailRow('Referencia Ubii', invoice['ubii_reference'], isDark, highlight: true),
+                      ],
+                      isDark,
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Montos
+                    _buildDetailSection(
+                      'Montos',
+                      [
+                        _buildDetailRow('Total USD', CurrencyFormatter.formatUSD(invoice['total']), isDark),
+                        _buildDetailRow('Total Bs', CurrencyFormatter.formatBS(invoice['total'], invoice['tasa_usd'] ?? 36.50), isDark),
+                        _buildDetailRow('Tasa USD', '${(invoice['tasa_usd'] ?? 36.50).toStringAsFixed(2)} Bs', isDark),
+                      ],
+                      isDark,
+                    ),
+                    
+                    // Datos de Ubii POS (si aplica)
+                    if (invoice['ubii_reference'] != null && invoice['ubii_reference'].toString().isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _buildDetailSection(
+                        'Datos de Ubii POS',
+                        [
+                          _buildDetailRow('Referencia', invoice['ubii_reference'] ?? 'N/A', isDark),
+                          _buildDetailRow('Código Auth', invoice['ubii_auth_code'] ?? 'N/A', isDark),
+                          _buildDetailRow('Tipo Tarjeta', invoice['ubii_card_type'] ?? 'N/A', isDark),
+                          _buildDetailRow('Terminal', invoice['ubii_terminal'] ?? 'N/A', isDark),
+                          _buildDetailRow('Lote', invoice['ubii_lote'] ?? 'N/A', isDark),
+                          _buildDetailRow('Código Respuesta', invoice['ubii_response_code'] ?? 'N/A', isDark),
+                        ],
+                        isDark,
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Productos
+                    Text(
+                      'Productos',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...detalles.map((detalle) => _buildProductItem(detalle, isDark)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailSection(String title, List<Widget> children, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? AppColors.darkText : AppColors.lightText,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            ),
+          ),
+          child: Column(
+            children: children,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, bool isDark, {bool highlight = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
+              color: highlight 
+                  ? AppColors.primary 
+                  : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: highlight 
+                    ? AppColors.primary 
+                    : (isDark ? AppColors.darkText : AppColors.lightText),
+              ),
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductItem(Map<String, dynamic> detalle, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detalle['producto_nombre'] ?? 'Producto',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Cantidad: ${detalle['cantidad'].toInt()}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            CurrencyFormatter.formatUSD(detalle['subtotal']),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: AppColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(String dateTimeStr) {
+    final dt = DateTime.parse(dateTimeStr);
+    return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _getPaymentMethodLabel(String? method) {
+    switch (method) {
+      case 'card':
+        return 'Tarjeta';
+      case 'pago_movil':
+        return 'Pago Móvil';
+      case 'debit_immediate':
+        return 'Débito Inmediato';
+      default:
+        return 'Efectivo';
+    }
   }
 }

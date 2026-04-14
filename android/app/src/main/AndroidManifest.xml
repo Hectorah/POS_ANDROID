@@ -9,6 +9,17 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
     <!-- Para acceder a todos los archivos en Android 11+ -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <!-- Permisos básicos para que la app de Ubii funcione sin problemas si los hereda -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- IMPORTANTE: Declarar que queremos interactuar con la app de Ubii (Android 11+) -->
+    <queries>
+        <intent>
+            <action android:name="com.ubiipagos.pos.views.activity.MainActivityView.launchFromOutside" />
+        </intent>
+    </queries>
     
     <application
         android:label="POS ANDROID"
