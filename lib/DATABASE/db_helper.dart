@@ -96,7 +96,7 @@ class DbHelper {
 
     return await openDatabase(
       path,
-      version: 6, // Actualizado a versión 6 para agregar descripcion
+      version: 8, // Actualizado a versión 8 para agregar tipo_impuesto a productos
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -352,6 +352,7 @@ class DbHelper {
         nombre $textType,
         descripcion $textNull,
         precio $numType,
+        tipo_impuesto TEXT NOT NULL DEFAULT 'G',
         fecha_creacion $dateType
       )
     ''');
@@ -376,6 +377,7 @@ class DbHelper {
         nombre $textType,
         correo $textNull,
         direccion $textNull,
+        agente_retencion INTEGER DEFAULT 0,
         fecha_creacion $dateType
       )
     ''');
@@ -391,6 +393,7 @@ class DbHelper {
         tipo_documento $textType DEFAULT 'Factura',
         base_imponible $numType,
         monto_iva $numType,
+        retencion_iva $numType DEFAULT 0,
         tasa_usd $numType,
         tasa_eur $numType,
         total $numType,
@@ -475,6 +478,7 @@ class DbHelper {
       'nombre': 'CLIENTE PRUEBA',
       'correo': 'PRUEBA@GMAIL.COM',
       'direccion': 'PRUEBA',
+      'agente_retencion': 0,
       'fecha_creacion': DateTime.now().toIso8601String(),
     });
     
@@ -486,6 +490,22 @@ class DbHelper {
   // Método para futuras actualizaciones sin perder datos
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     debugPrint('🔄 Actualizando base de datos de v$oldVersion a v$newVersion');
+    
+    // Migración de versión 7 a 8: Agregar campo tipo_impuesto a productos
+    if (oldVersion < 8) {
+      debugPrint('📝 Agregando campo tipo_impuesto a tabla productos...');
+      
+      try {
+        // Agregar campo tipo_impuesto (E=Exento, G=General 16%)
+        await db.execute('ALTER TABLE productos ADD COLUMN tipo_impuesto TEXT NOT NULL DEFAULT "G"');
+        
+        debugPrint('✅ Campo tipo_impuesto agregado exitosamente');
+        debugPrint('   - E: Exento (productos sin IVA)');
+        debugPrint('   - G: General (IVA 16%)');
+      } catch (e) {
+        debugPrint('⚠️ Error agregando campo tipo_impuesto: $e');
+      }
+    }
     
     // Migración de versión 1 a 2: Agregar campos de pago
     if (oldVersion < 2) {
@@ -595,6 +615,27 @@ class DbHelper {
         debugPrint('⚠️ Error agregando campo a productos (puede que ya exista): $e');
       }
     }
+    
+    // Migración de versión 6 a 7: Agregar campos de agente de retención
+    if (oldVersion < 7) {
+      debugPrint('📝 Agregando campos de agente de retención...');
+      
+      try {
+        // Agregar campo agente_retencion a tabla clientes
+        await db.execute('ALTER TABLE clientes ADD COLUMN agente_retencion INTEGER DEFAULT 0');
+        debugPrint('   ✅ Campo agente_retencion agregado a tabla clientes');
+        
+        // Agregar campo retencion_iva a tabla factura
+        await db.execute('ALTER TABLE factura ADD COLUMN retencion_iva REAL DEFAULT 0');
+        debugPrint('   ✅ Campo retencion_iva agregado a tabla factura');
+        
+        debugPrint('✅ Campos de agente de retención agregados exitosamente');
+        debugPrint('   - agente_retencion: Indica si el cliente es agente de retención (0=No, 1=Sí)');
+        debugPrint('   - retencion_iva: Monto de retención de IVA (75% del IVA para agentes de retención)');
+      } catch (e) {
+        debugPrint('⚠️ Error agregando campos de agente de retención: $e');
+      }
+    }
   }
 
   // --- MÉTODOS DE AYUDA (CRUD básico) ---
@@ -619,6 +660,7 @@ class DbHelper {
         p.cod_barras,
         p.nombre,
         p.precio,
+        p.tipo_impuesto,
         e.stock,
         p.fecha_creacion
       FROM productos p
@@ -640,6 +682,7 @@ class DbHelper {
         p.cod_barras,
         p.nombre,
         p.precio,
+        p.tipo_impuesto,
         e.stock
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
@@ -661,6 +704,7 @@ class DbHelper {
         p.cod_barras,
         p.nombre,
         p.precio,
+        p.tipo_impuesto,
         e.stock
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
@@ -730,6 +774,7 @@ class DbHelper {
     required String nombre,
     required String descripcion,
     required double precio,
+    String tipoImpuesto = 'G', // Por defecto General (16%)
   }) async {
     final db = await database;
     
@@ -742,10 +787,12 @@ class DbHelper {
         'nombre': nombre,
         'descripcion': descripcion.isEmpty ? null : descripcion,
         'precio': precio,
+        'tipo_impuesto': tipoImpuesto,
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
       
       debugPrint('✅ Producto creado con ID: $productoId');
+      debugPrint('   Tipo impuesto: ${tipoImpuesto == "E" ? "Exento" : "General 16%"}');
       return productoId;
     } catch (e) {
       debugPrint('❌ Error creando producto: $e');
@@ -810,6 +857,7 @@ class DbHelper {
           p.nombre,
           p.descripcion,
           p.precio,
+          p.tipo_impuesto,
           e.stock
         FROM productos p
         LEFT JOIN existencias e ON p.id = e.producto_id
@@ -834,6 +882,7 @@ class DbHelper {
     required String descripcion,
     required double precio,
     required double stock,
+    String tipoImpuesto = 'G',
   }) async {
     final db = await database;
     
@@ -849,6 +898,7 @@ class DbHelper {
             'nombre': nombre,
             'descripcion': descripcion.isEmpty ? null : descripcion,
             'precio': precio,
+            'tipo_impuesto': tipoImpuesto,
           },
           where: 'id = ?',
           whereArgs: [productoId],
@@ -991,6 +1041,7 @@ class DbHelper {
     String tipoDocumento = 'Factura',
     required double baseImponible,
     required double montoIva,
+    double retencionIva = 0.0,
     required double tasaUsd,
     required double tasaEur,
     required double total,
@@ -1027,6 +1078,7 @@ class DbHelper {
         'tipo_documento': tipoDocumento,
         'base_imponible': baseImponible,
         'monto_iva': montoIva,
+        'retencion_iva': retencionIva,
         'tasa_usd': tasaUsd,
         'tasa_eur': tasaEur,
         'total': total,

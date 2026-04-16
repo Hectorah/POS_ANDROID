@@ -588,20 +588,25 @@ class ExcelService {
     int tipoIndex
   ) async {
     // TIPO, CodArticulo, CodBarras, Nombre, Precio, Stock
-    if (row.length < tipoIndex + 5) return 'omitido';
+    if (row.length < tipoIndex + 6) return 'omitido';
     
     final codArt = row[tipoIndex + 1].toString().trim();
     final codBar = row[tipoIndex + 2].toString().trim();
     final nombre = row[tipoIndex + 3].toString().trim();
-    final precioStr = row[tipoIndex + 4].toString().trim();
-    final stockStr = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim() : '0';
+    final descripcion = row.length > tipoIndex + 4 ? row[tipoIndex + 4].toString().trim() : '';
+    final precioStr = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim() : '0';
+    final stockStr = row.length > tipoIndex + 6 ? row[tipoIndex + 6].toString().trim() : '0';
+    final tipoImpuesto = row.length > tipoIndex + 7 ? row[tipoIndex + 7].toString().trim().toUpperCase() : 'G';
     
     if (codArt.isEmpty || nombre.isEmpty) return 'omitido';
     
     final precio = double.tryParse(precioStr.replaceAll(',', '.')) ?? 0.0;
     final stock = double.tryParse(stockStr.replaceAll(',', '.')) ?? 0.0;
     
-    debugPrint('📦 Producto: $codArt - $nombre - \$$precio - Stock: $stock');
+    // Validar tipo de impuesto
+    final tipoImpuestoFinal = (tipoImpuesto == 'E' || tipoImpuesto == 'G') ? tipoImpuesto : 'G';
+    
+    debugPrint('📦 Producto: $codArt - $nombre - \$$precio - Stock: $stock - Tipo: $tipoImpuestoFinal');
     
     final existingProduct = await txn.query(
       'productos',
@@ -615,9 +620,11 @@ class ExcelService {
       await txn.update(
         'productos',
         {
-          'cod_barras': codBar,
+          'cod_barras': codBar.isEmpty ? null : codBar,
           'nombre': nombre,
+          'descripcion': descripcion.isEmpty ? null : descripcion,
           'precio': precio,
+          'tipo_impuesto': tipoImpuestoFinal,
         },
         where: 'id = ?',
         whereArgs: [productoId],
@@ -637,9 +644,11 @@ class ExcelService {
     } else {
       final productoId = await txn.insert('productos', {
         'cod_articulo': codArt,
-        'cod_barras': codBar,
+        'cod_barras': codBar.isEmpty ? null : codBar,
         'nombre': nombre,
+        'descripcion': descripcion.isEmpty ? null : descripcion,
         'precio': precio,
+        'tipo_impuesto': tipoImpuestoFinal,
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
       
@@ -660,17 +669,19 @@ class ExcelService {
     List<dynamic> row, 
     int tipoIndex
   ) async {
-    // TIPO, Identificacion, Nombre, Correo, Direccion
+    // TIPO, Identificacion, Nombre, Correo, Direccion, AgenteRetencion
     if (row.length < tipoIndex + 3) return 'omitido';
     
     final identificacion = row[tipoIndex + 1].toString().trim();
     final nombre = row[tipoIndex + 2].toString().trim();
     final correo = row.length > tipoIndex + 3 ? row[tipoIndex + 3].toString().trim() : '';
     final direccion = row.length > tipoIndex + 4 ? row[tipoIndex + 4].toString().trim() : '';
+    final agenteRetencionStr = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim().toUpperCase() : '';
+    final agenteRetencion = (agenteRetencionStr == 'SI' || agenteRetencionStr == 'SÍ' || agenteRetencionStr == '1' || agenteRetencionStr == 'TRUE') ? 1 : 0;
     
     if (identificacion.isEmpty || nombre.isEmpty) return 'omitido';
     
-    debugPrint('👤 Cliente: $identificacion - $nombre');
+    debugPrint('👤 Cliente: $identificacion - $nombre (AR: ${agenteRetencion == 1 ? "Sí" : "No"})');
     
     final existingClient = await txn.query(
       'clientes',
@@ -686,6 +697,7 @@ class ExcelService {
           'nombre': nombre,
           'correo': correo.isEmpty ? null : correo,
           'direccion': direccion.isEmpty ? null : direccion,
+          'agente_retencion': agenteRetencion,
         },
         where: 'identificacion = ?',
         whereArgs: [identificacion],
@@ -698,6 +710,7 @@ class ExcelService {
         'nombre': nombre,
         'correo': correo.isEmpty ? null : correo,
         'direccion': direccion.isEmpty ? null : direccion,
+        'agente_retencion': agenteRetencion,
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
       

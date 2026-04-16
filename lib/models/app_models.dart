@@ -38,8 +38,16 @@ class Producto {
   final String? codBarras;
   final String nombre;
   final double precio;
+  final String tipoImpuesto; // 'E' = Exento, 'G' = General (16%)
 
-  Producto({this.id, required this.codArticulo, this.codBarras, required this.nombre, required this.precio});
+  Producto({
+    this.id, 
+    required this.codArticulo, 
+    this.codBarras, 
+    required this.nombre, 
+    required this.precio,
+    this.tipoImpuesto = 'G', // Por defecto General (16%)
+  });
 
   Map<String, dynamic> toMap() {
     return {
@@ -48,6 +56,7 @@ class Producto {
       'cod_barras': codBarras,
       'nombre': nombre,
       'precio': precio,
+      'tipo_impuesto': tipoImpuesto,
     };
   }
 
@@ -58,6 +67,7 @@ class Producto {
       codBarras: map['cod_barras'],
       nombre: map['nombre'],
       precio: map['precio'],
+      tipoImpuesto: map['tipo_impuesto'] ?? 'G', // Por defecto General si no existe
     );
   }
 }

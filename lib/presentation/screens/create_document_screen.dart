@@ -34,7 +34,7 @@ class ClientModel {
       nombre: map['nombre'] ?? '',
       correo: map['correo'],
       direccion: map['direccion'],
-      agenteRetencion: false, // Por ahora siempre false, se puede agregar a la BD después
+      agenteRetencion: (map['agente_retencion'] ?? 0) == 1,
     );
   }
 
@@ -45,6 +45,7 @@ class ClientModel {
       'nombre': nombre,
       'correo': correo,
       'direccion': direccion,
+      'agente_retencion': agenteRetencion ? 1 : 0,
     };
   }
 
@@ -58,6 +59,7 @@ class ProductModel {
   final String name;
   final double price;
   final double stock;
+  final String tipoImpuesto; // 'E' = Exento, 'G' = General (16%)
   int quantity;
 
   ProductModel({
@@ -66,6 +68,7 @@ class ProductModel {
     required this.name,
     required this.price,
     required this.stock,
+    this.tipoImpuesto = 'G', // Por defecto General
     this.quantity = 1,
   });
 
@@ -77,6 +80,7 @@ class ProductModel {
       name: map['nombre'] ?? '',
       price: (map['precio'] as num?)?.toDouble() ?? 0.0,
       stock: (map['stock'] as num?)?.toDouble() ?? 0.0,
+      tipoImpuesto: map['tipo_impuesto'] ?? 'G',
       quantity: 1,
     );
   }
@@ -256,180 +260,201 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     final nombreController = TextEditingController();
     final correoController = TextEditingController();
     final direccionController = TextEditingController();
+    bool isAgenteRetencion = false;
 
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.person_add, color: AppColors.primary),
-              const SizedBox(width: 12),
-              Text(
-                'Registrar Cliente',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  const Icon(Icons.person_add, color: AppColors.primary),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Registrar Cliente',
+                    style: TextStyle(
+                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cliente no encontrado con identificación:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      identificacion,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nombreController,
+                      decoration: InputDecoration(
+                        labelText: 'Nombre completo *',
+                        hintText: 'Ej: JUAN PÉREZ',
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: const Icon(Icons.person),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: correoController,
+                      decoration: InputDecoration(
+                        labelText: 'Correo (opcional)',
+                        hintText: 'Ej: cliente@email.com',
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: const Icon(Icons.email),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      textCapitalization: TextCapitalization.none,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: direccionController,
+                      decoration: InputDecoration(
+                        labelText: 'Dirección (opcional)',
+                        hintText: 'Ej: CALLE 123, CIUDAD',
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: const Icon(Icons.location_on),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      title: const Text('Agente de Retención'),
+                      subtitle: const Text('Cliente sujeto a retención de IVA según SENIAT'),
+                      value: isAgenteRetencion,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          isAgenteRetencion = value ?? false;
+                        });
+                      },
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cliente no encontrado con identificación:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  identificacion,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: nombreController,
-                  decoration: InputDecoration(
-                    labelText: 'Nombre completo *',
-                    hintText: 'Ej: Juan Pérez',
-                    filled: true,
-                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                    border: OutlineInputBorder(
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final nombre = nombreController.text.trim().toUpperCase();
+                    final correo = correoController.text.trim().toUpperCase();
+                    final direccion = direccionController.text.trim().toUpperCase();
+                    
+                    if (nombre.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('El nombre es obligatorio'),
+                          backgroundColor: AppColors.error,
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      // Registrar cliente en la BD
+                      final clienteData = {
+                        'identificacion': identificacion,
+                        'nombre': nombre,
+                        'correo': correo.isEmpty ? null : correo,
+                        'direccion': direccion.isEmpty ? null : direccion,
+                        'agente_retencion': isAgenteRetencion ? 1 : 0,
+                      };
+
+                      final clienteId = await DbHelper.instance.insertarCliente(clienteData);
+                      
+                      if (clienteId > 0) {
+                        // Cliente registrado exitosamente
+                        setState(() {
+                          _selectedClient = ClientModel(
+                            id: clienteId,
+                            identificacion: identificacion,
+                            nombre: nombre,
+                            correo: correo.isEmpty ? null : correo,
+                            direccion: direccion.isEmpty ? null : direccion,
+                            agenteRetencion: isAgenteRetencion,
+                          );
+                        });
+
+                        if (context.mounted) {
+                          Navigator.of(dialogContext).pop();
+                          _showSnackBar('Cliente registrado exitosamente', AppColors.success);
+                        }
+                        
+                        debugPrint('✅ Cliente registrado: $nombre (ID: $clienteId)');
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text('Error al registrar: $e'),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                      }
+                      debugPrint('❌ Error registrando cliente: $e');
+                    }
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('Registrar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    prefixIcon: const Icon(Icons.person),
                   ),
-                  textCapitalization: TextCapitalization.words,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: correoController,
-                  decoration: InputDecoration(
-                    labelText: 'Correo (opcional)',
-                    hintText: 'Ej: cliente@email.com',
-                    filled: true,
-                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    prefixIcon: const Icon(Icons.email),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: direccionController,
-                  decoration: InputDecoration(
-                    labelText: 'Dirección (opcional)',
-                    hintText: 'Ej: Calle 123, Ciudad',
-                    filled: true,
-                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    prefixIcon: const Icon(Icons.location_on),
-                  ),
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 2,
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
-                ),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final nombre = nombreController.text.trim().toUpperCase();
-                final correo = correoController.text.trim().toUpperCase();
-                final direccion = direccionController.text.trim().toUpperCase();
-                
-                if (nombre.isEmpty) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('El nombre es obligatorio'),
-                      backgroundColor: AppColors.error,
-                    ),
-                  );
-                  return;
-                }
-
-                try {
-                  // Registrar cliente en la BD
-                  final clienteData = {
-                    'identificacion': identificacion,
-                    'nombre': nombre,
-                    'correo': correo.isEmpty ? null : correo,
-                    'direccion': direccion.isEmpty ? null : direccion,
-                  };
-
-                  final clienteId = await DbHelper.instance.insertarCliente(clienteData);
-                  
-                  if (clienteId > 0) {
-                    // Cliente registrado exitosamente
-                    setState(() {
-                      _selectedClient = ClientModel(
-                        id: clienteId,
-                        identificacion: identificacion,
-                        nombre: nombre,
-                        correo: correo.isEmpty ? null : correo,
-                        direccion: direccion.isEmpty ? null : direccion,
-                      );
-                    });
-
-                    if (context.mounted) {
-                      Navigator.of(dialogContext).pop();
-                      _showSnackBar('Cliente registrado exitosamente', AppColors.success);
-                    }
-                    
-                    debugPrint('✅ Cliente registrado: $nombre (ID: $clienteId)');
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(dialogContext).showSnackBar(
-                      SnackBar(
-                        content: Text('Error al registrar: $e'),
-                        backgroundColor: AppColors.error,
-                      ),
-                    );
-                  }
-                  debugPrint('❌ Error registrando cliente: $e');
-                }
-              },
-              icon: const Icon(Icons.save),
-              label: const Text('Registrar'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ],
+            );
+          },
         );
       },
     );
   }
+
   Future<void> _loadProducts() async {
     // Si ya están cargados, no volver a cargar
     if (_availableProducts.isNotEmpty) {
@@ -517,6 +542,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           name: product.name,
           price: product.price,
           stock: product.stock,
+          tipoImpuesto: product.tipoImpuesto,
           quantity: 1,
         ));
       });
@@ -526,25 +552,51 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     Navigator.pop(context); // Cerrar el modal
   }
 
-  // Cálculos
-  double get _subtotal {
+  // Cálculos según SENIAT
+  
+  /// Base Imponible (G): Suma de productos con IVA General (16%)
+  double get _baseImponible {
     return _cart.fold(0.0, (sum, item) {
-      final itemSubtotal = item.price * item.quantity;
-      return sum + itemSubtotal;
+      if (item.tipoImpuesto == 'G') {
+        final itemSubtotal = item.price * item.quantity;
+        return sum + itemSubtotal;
+      }
+      return sum;
     });
   }
 
-  double get _iva {
-    if (_selectedClient != null && _selectedClient!.agenteRetencion) {
-      return 0.0;
-    }
-    
-    // IVA del 16% sobre el subtotal
-    return _subtotal * 0.16;
+  /// Monto Exento (E): Suma de productos sin IVA
+  double get _montoExento {
+    return _cart.fold(0.0, (sum, item) {
+      if (item.tipoImpuesto == 'E') {
+        final itemSubtotal = item.price * item.quantity;
+        return sum + itemSubtotal;
+      }
+      return sum;
+    });
   }
 
+  /// Subtotal: Base Imponible + Monto Exento (sin IVA)
+  double get _subtotal {
+    return _baseImponible + _montoExento;
+  }
+
+  /// IVA (16%): Solo sobre la Base Imponible
+  double get _iva {
+    return _baseImponible * 0.16;
+  }
+
+  /// Retención de IVA: 75% del IVA si el cliente es agente de retención
+  double get _retencionIVA {
+    if (_selectedClient != null && _selectedClient!.agenteRetencion) {
+      return _iva * 0.75;
+    }
+    return 0.0;
+  }
+
+  /// Total a Pagar: Base Imponible + IVA + Monto Exento - Retención IVA
   double get _total {
-    return _subtotal + _iva;
+    return _baseImponible + _iva + _montoExento - _retencionIVA;
   }
 
   // Métodos de UI simplificados
@@ -1039,8 +1091,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       final facturaId = await DbHelper.instance.crearFactura(
         clienteId: _selectedClient!.id ?? 0,
         usuarioId: usuarioId,
-        baseImponible: _subtotal,
+        baseImponible: _baseImponible,
         montoIva: _iva,
+        retencionIva: _retencionIVA,
         tasaUsd: _exchangeRate,
         tasaEur: 0.0, // No se usa EUR por ahora
         total: _total,
@@ -1938,7 +1991,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              item.name.toUpperCase(),
+              '${item.name.toUpperCase()} (${item.tipoImpuesto})',
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
@@ -2038,9 +2091,24 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       ),
       child: Column(
         children: [
-          _buildTotalRow('Subtotal', _subtotal, false, isDark),
-          _buildTotalRow('IVA (16%)', _iva, false, isDark),
-          if (_selectedClient != null && _selectedClient!.agenteRetencion && _iva == 0)
+          // Mostrar Base Imponible (productos con IVA)
+          if (_baseImponible > 0)
+            _buildTotalRow('Base Imponible (G)', _baseImponible, false, isDark),
+          
+          // Mostrar IVA solo si hay base imponible
+          if (_baseImponible > 0)
+            _buildTotalRow('IVA 16%', _iva, false, isDark),
+          
+          // Mostrar Monto Exento (productos sin IVA)
+          if (_montoExento > 0)
+            _buildTotalRow('Monto Exento (E)', _montoExento, false, isDark),
+          
+          // Mostrar Retención de IVA si aplica
+          if (_selectedClient != null && _selectedClient!.agenteRetencion && _retencionIVA > 0)
+            _buildTotalRow('Retención IVA (75%)', -_retencionIVA, false, isDark, isRetention: true),
+          
+          // Nota informativa para agentes de retención
+          if (_selectedClient != null && _selectedClient!.agenteRetencion)
             const Padding(
               padding: EdgeInsets.only(top: 4, bottom: 8),
               child: Row(
@@ -2053,7 +2121,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'IVA no aplicado - Cliente es Agente de Retención',
+                      'Cliente Agente de Retención - Se aplica retención del 75% sobre el IVA',
                       style: TextStyle(
                         fontSize: 11,
                         color: AppColors.info,
@@ -2071,7 +2139,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-  Widget _buildTotalRow(String label, double value, bool isFinal, bool isDark) {
+  Widget _buildTotalRow(String label, double value, bool isFinal, bool isDark, {bool isRetention = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -2084,6 +2152,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 style: TextStyle(
                   fontSize: isFinal ? 18 : 14,
                   fontWeight: isFinal ? FontWeight.bold : FontWeight.normal,
+                  color: isRetention ? AppColors.warning : null,
                 ),
               ),
               Column(
@@ -2094,7 +2163,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     style: TextStyle(
                       fontSize: isFinal ? 24 : 16,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.successDark,
+                      color: isRetention ? AppColors.warning : AppColors.successDark,
                     ),
                   ),
                   Text(
@@ -2102,7 +2171,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     style: TextStyle(
                       fontSize: isFinal ? 14 : 12,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.successDark,
+                      color: isRetention ? AppColors.warning : AppColors.successDark,
                     ),
                   ),
                 ],

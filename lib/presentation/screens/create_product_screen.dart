@@ -25,6 +25,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _descripcionController = TextEditingController();
   final _precioController = TextEditingController();
   final _stockController = TextEditingController();
+  
+  // Tipo de impuesto
+  String _tipoImpuesto = 'G'; // Por defecto General (16%)
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _descripcionController.text = product['descripcion'] ?? '';
     _precioController.text = (product['precio'] as num?)?.toStringAsFixed(2) ?? '';
     _stockController.text = (product['stock'] as num?)?.toStringAsFixed(0) ?? '';
+    _tipoImpuesto = product['tipo_impuesto'] ?? 'G';
   }
 
   @override
@@ -82,6 +86,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           descripcion: descripcion,
           precio: precio,
           stock: stock,
+          tipoImpuesto: _tipoImpuesto,
         );
         
         if (!success) {
@@ -108,6 +113,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           nombre: nombre,
           descripcion: descripcion,
           precio: precio,
+          tipoImpuesto: _tipoImpuesto,
         );
 
         // Crear existencia inicial
@@ -289,6 +295,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               ),
               SizedBox(height: isTablet ? 16 : 12),
 
+              // Selector de tipo de impuesto
+              _buildTipoImpuestoSelector(isDark, isTablet),
+              SizedBox(height: isTablet ? 16 : 12),
+
               _buildTextField(
                 controller: _stockController,
                 label: 'Stock ${_isEditing ? 'Actual' : 'Inicial'}',
@@ -403,6 +413,99 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         fontSize: isTablet ? 20 : 18,
         fontWeight: FontWeight.bold,
         color: isDark ? AppColors.darkText : AppColors.lightText,
+      ),
+    );
+  }
+
+  Widget _buildTipoImpuestoSelector(bool isDark, bool isTablet) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+        ),
+      ),
+      padding: EdgeInsets.all(isTablet ? 16 : 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.receipt_long,
+                size: isTablet ? 24 : 20,
+                color: isDark ? AppColors.darkText : AppColors.lightText,
+              ),
+              SizedBox(width: isTablet ? 12 : 8),
+              Text(
+                'Tipo de Impuesto (IVA) *',
+                style: TextStyle(
+                  fontSize: isTablet ? 16 : 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: isTablet ? 12 : 8),
+          
+          // Opción: General (16%)
+          RadioListTile<String>(
+            value: 'G',
+            groupValue: _tipoImpuesto,
+            onChanged: (value) {
+              setState(() {
+                _tipoImpuesto = value!;
+              });
+            },
+            title: Text(
+              'General (G) - IVA 16%',
+              style: TextStyle(
+                fontSize: isTablet ? 15 : 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            subtitle: Text(
+              'Aplica a la mayoría de productos (ropa, tecnología, servicios)',
+              style: TextStyle(
+                fontSize: isTablet ? 13 : 11,
+                color: Colors.grey[600],
+              ),
+            ),
+            activeColor: AppColors.primary,
+            contentPadding: EdgeInsets.zero,
+          ),
+          
+          Divider(height: 1, color: Colors.grey[300]),
+          
+          // Opción: Exento
+          RadioListTile<String>(
+            value: 'E',
+            groupValue: _tipoImpuesto,
+            onChanged: (value) {
+              setState(() {
+                _tipoImpuesto = value!;
+              });
+            },
+            title: Text(
+              'Exento (E) - Sin IVA',
+              style: TextStyle(
+                fontSize: isTablet ? 15 : 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            subtitle: Text(
+              'Productos sin IVA (alimentos básicos, medicamentos, etc.)',
+              style: TextStyle(
+                fontSize: isTablet ? 13 : 11,
+                color: Colors.grey[600],
+              ),
+            ),
+            activeColor: AppColors.success,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ],
       ),
     );
   }
