@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter/foundation.dart';
-import '../core/ubii_config.dart';
+import '../core/app_config.dart';
 
 /// Servicio para VERIFICAR Pago Móvil a través de la API de Ubii
 /// 
@@ -16,11 +16,11 @@ class UbiiPagoMovilService {
   // ==================== CONFIGURACIÓN ====================
   
   /// Credenciales del comercio desde configuración centralizada
-  static String get _clientId => UbiiConfig.clientId;
-  static String get _clientDomain => UbiiConfig.clientDomain;
-  static String get _baseUrl => UbiiConfig.baseUrl;
-  static String get _phoneComercio => UbiiConfig.phoneComercio;
-  static String get _cedulaComercio => UbiiConfig.cedulaComercio;
+  static String get _clientId => AppConfig.ubiiClientId;
+  static String get _clientDomain => AppConfig.ubiiClientDomain;
+  static String get _baseUrl => AppConfig.ubiiBaseUrl;
+  static String get _phoneComercio => AppConfig.pagoMovilTelefono;
+  static String get _cedulaComercio => AppConfig.pagoMovilCedulaRif;
   
   // ==================== ESTADO INTERNO ====================
   
@@ -129,7 +129,7 @@ class UbiiPagoMovilService {
           // Buscar la key de Pago Móvil (alias "P2C" o "PAGO_MOVIL")
           for (var k in keys) {
             final alias = k['btn_alias'] as String?;
-            if (alias == UbiiConfig.pagoMovilAlias || alias == 'P2C' || alias == 'PAGO_MOVIL') {
+            if (alias == AppConfig.pagoMovilAlias || alias == 'P2C' || alias == 'PAGO_MOVIL') {
               _apiKeyPagoMovil = k['btn_key'];
               debugPrint('✅ API Key de Pago Móvil encontrada');
               debugPrint('   Alias: $alias');

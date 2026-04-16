@@ -16,6 +16,13 @@ android/build/
 *.bin
 *.lock.bin
 
+# ============================================================================
+# ARCHIVOS SENSIBLES - NO SUBIR A GIT
+# ============================================================================
+# Variables de entorno con credenciales
+.env
+# Nota: .env.example SÍ se sube como plantilla
+
 # Archivos generados por Flutter
 build/
 .dart_tool/

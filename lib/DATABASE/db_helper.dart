@@ -3,6 +3,7 @@ import 'package:path/path.dart';
 import 'package:flutter/material.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import '../core/app_config.dart';
 
 class DbHelper {
   // Patrón Singleton: Una única instancia para toda la app
@@ -64,7 +65,9 @@ class DbHelper {
   Future<void> _crearUsuarioAdmin() async {
     try {
       final db = await database;
-      final adminPassword = _hashPassword('1');
+      // Contraseña por defecto para desarrollo (cambiar en producción)
+      const defaultPassword = '1';
+      final adminPassword = _hashPassword(defaultPassword);
       
       await db.insert('usuarios', {
         'nombre': 'Administrador',
@@ -93,7 +96,7 @@ class DbHelper {
 
     return await openDatabase(
       path,
-      version: 3, // Actualizado a versión 3 para agregar tabla de cierres de lote
+      version: 6, // Actualizado a versión 6 para agregar descripcion
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -110,6 +113,214 @@ class DbHelper {
     final bytes = utf8.encode(password);
     final hash = sha256.convert(bytes);
     return hash.toString();
+  }
+  
+  // ============================================================================
+  // MÉTODOS PARA NÚMERO DE CONTROL FISCAL
+  // ============================================================================
+  
+  /// Formatear número de control con el formato estándar: 00-0000001
+  /// 
+  /// Parámetros:
+  /// - [numero]: Número secuencial (1, 2, 3, ...)
+  /// - [prefijo]: Prefijo del número de control (por defecto "00")
+  /// - [digitos]: Cantidad de dígitos para el número (por defecto 7)
+  /// 
+  /// Retorna: String en formato "00-0000001"
+  static String _formatearNumeroControl(int numero, {String prefijo = '00', int digitos = 7}) {
+    final numeroFormateado = numero.toString().padLeft(digitos, '0');
+    return '$prefijo-$numeroFormateado';
+  }
+  
+  /// Generar el siguiente número de control disponible
+  /// 
+  /// Este método:
+  /// 1. Consulta el último número de control usado
+  /// 2. Incrementa en 1
+  /// 3. Formatea con el estándar (00-0000001)
+  /// 4. Valida que no exceda el rango autorizado
+  /// 
+  /// Retorna: String con el número de control generado
+  /// Lanza: Exception si se excede el rango autorizado
+  Future<String> generarNumeroControl({String? prefijo, int? rangoMaximo}) async {
+    final db = await database;
+    
+    // Usar configuración centralizada si no se especifican parámetros
+    final prefijoFinal = prefijo ?? AppConfig.prefijoNumeroControl;
+    final rangoMaximoFinal = rangoMaximo ?? AppConfig.rangoMaximoNumeroControl;
+    
+    try {
+      debugPrint('🔢 Generando número de control...');
+      
+      // 1. Obtener el último número de control usado
+      final result = await db.rawQuery('''
+        SELECT numero_control 
+        FROM factura 
+        WHERE numero_control IS NOT NULL
+        ORDER BY id DESC 
+        LIMIT 1
+      ''');
+      
+      int siguienteNumero = 1; // Por defecto, empezar en 1
+      
+      if (result.isNotEmpty && result.first['numero_control'] != null) {
+        // 2. Extraer el número del formato "00-0000001"
+        final ultimoControl = result.first['numero_control'] as String;
+        final partes = ultimoControl.split('-');
+        
+        if (partes.length == 2) {
+          final ultimoNumero = int.tryParse(partes[1]) ?? 0;
+          siguienteNumero = ultimoNumero + 1;
+          
+          debugPrint('   Último número de control: $ultimoControl');
+          debugPrint('   Siguiente número: $siguienteNumero');
+        }
+      } else {
+        debugPrint('   Primera factura - Iniciando en 1');
+      }
+      
+      // 3. Validar que no exceda el rango autorizado
+      if (siguienteNumero > rangoMaximoFinal) {
+        final mensaje = 'Rango de números de control agotado. '
+                       'Último número: ${_formatearNumeroControl(rangoMaximoFinal, prefijo: prefijoFinal)}. '
+                       'Solicite un nuevo rango al SENIAT.';
+        debugPrint('❌ $mensaje');
+        throw Exception(mensaje);
+      }
+      
+      // 4. Alertar si quedan pocos números disponibles
+      final restantes = rangoMaximoFinal - siguienteNumero;
+      if (restantes <= AppConfig.umbralAlertaNumeroControl) {
+        debugPrint('⚠️ ALERTA: Solo quedan $restantes números de control disponibles');
+        debugPrint('   Solicite un nuevo rango al SENIAT pronto');
+      }
+      
+      // 5. Formatear y retornar
+      final numeroControl = _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal);
+      debugPrint('✅ Número de control generado: $numeroControl');
+      
+      return numeroControl;
+      
+    } catch (e) {
+      debugPrint('❌ Error generando número de control: $e');
+      rethrow;
+    }
+  }
+  
+  /// Validar que la secuencia de números de control no tenga saltos
+  /// 
+  /// Este método verifica que todos los números de control sean consecutivos
+  /// sin saltos ni duplicados.
+  /// 
+  /// Retorna: true si la secuencia es válida, false si hay saltos
+  Future<bool> validarSecuenciaControl({String prefijo = '00'}) async {
+    final db = await database;
+    
+    try {
+      debugPrint('🔍 Validando secuencia de números de control...');
+      
+      final facturas = await db.rawQuery('''
+        SELECT id, numero_control 
+        FROM factura 
+        WHERE numero_control IS NOT NULL
+        ORDER BY id ASC
+      ''');
+      
+      if (facturas.isEmpty) {
+        debugPrint('   No hay facturas para validar');
+        return true;
+      }
+      
+      for (int i = 0; i < facturas.length; i++) {
+        final control = facturas[i]['numero_control'] as String;
+        final partes = control.split('-');
+        
+        if (partes.length != 2 || partes[0] != prefijo) {
+          debugPrint('⚠️ Formato inválido en factura ${facturas[i]['id']}: $control');
+          return false;
+        }
+        
+        final numero = int.tryParse(partes[1]);
+        if (numero == null) {
+          debugPrint('⚠️ Número inválido en factura ${facturas[i]['id']}: $control');
+          return false;
+        }
+        
+        // Verificar que el número sea i + 1 (secuencia consecutiva)
+        final numeroEsperado = i + 1;
+        if (numero != numeroEsperado) {
+          debugPrint('⚠️ Salto detectado en factura ${facturas[i]['id']}:');
+          debugPrint('   Esperado: ${_formatearNumeroControl(numeroEsperado, prefijo: prefijo)}');
+          debugPrint('   Encontrado: $control');
+          return false;
+        }
+      }
+      
+      debugPrint('✅ Secuencia de números de control válida (${facturas.length} facturas)');
+      return true;
+      
+    } catch (e) {
+      debugPrint('❌ Error validando secuencia: $e');
+      return false;
+    }
+  }
+  
+  /// Obtener estadísticas de números de control
+  /// 
+  /// Retorna información sobre el uso de números de control:
+  /// - Último número usado
+  /// - Total de facturas
+  /// - Números disponibles (si se especifica rango)
+  Future<Map<String, dynamic>> obtenerEstadisticasControl({int rangoMaximo = 9999999}) async {
+    final db = await database;
+    
+    try {
+      final result = await db.rawQuery('''
+        SELECT 
+          COUNT(*) as total_facturas,
+          MAX(numero_control) as ultimo_control
+        FROM factura 
+        WHERE numero_control IS NOT NULL
+      ''');
+      
+      final totalFacturas = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT COUNT(*) FROM factura WHERE numero_control IS NOT NULL'
+      )) ?? 0;
+      
+      final ultimoControl = result.first['ultimo_control'] as String?;
+      
+      int ultimoNumero = 0;
+      if (ultimoControl != null) {
+        final partes = ultimoControl.split('-');
+        if (partes.length == 2) {
+          ultimoNumero = int.tryParse(partes[1]) ?? 0;
+        }
+      }
+      
+      final disponibles = rangoMaximo - ultimoNumero;
+      
+      return {
+        'total_facturas': totalFacturas,
+        'ultimo_control': ultimoControl ?? 'N/A',
+        'ultimo_numero': ultimoNumero,
+        'disponibles': disponibles,
+        'rango_maximo': rangoMaximo,
+        'porcentaje_usado': totalFacturas > 0 
+            ? (ultimoNumero / rangoMaximo * 100).toStringAsFixed(2) 
+            : '0.00',
+      };
+      
+    } catch (e) {
+      debugPrint('❌ Error obteniendo estadísticas de control: $e');
+      return {
+        'total_facturas': 0,
+        'ultimo_control': 'Error',
+        'ultimo_numero': 0,
+        'disponibles': rangoMaximo,
+        'rango_maximo': rangoMaximo,
+        'porcentaje_usado': '0.00',
+      };
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -139,6 +350,7 @@ class DbHelper {
         cod_articulo $textType UNIQUE,
         cod_barras $textNull,
         nombre $textType,
+        descripcion $textNull,
         precio $numType,
         fecha_creacion $dateType
       )
@@ -172,9 +384,13 @@ class DbHelper {
     await db.execute('''
       CREATE TABLE factura (
         id $idType,
+        numero_control $textType UNIQUE,
         fecha_creacion $dateType,
         cliente_id INTEGER NOT NULL,
         usuario_id INTEGER NOT NULL,
+        tipo_documento $textType DEFAULT 'Factura',
+        base_imponible $numType,
+        monto_iva $numType,
         tasa_usd $numType,
         tasa_eur $numType,
         total $numType,
@@ -233,7 +449,9 @@ class DbHelper {
     // ========================================================================
     debugPrint('🔐 Creando usuario administrador por defecto...');
     
-    final adminPassword = _hashPassword('1'); // Contraseña: 1
+    // Contraseña por defecto para desarrollo (cambiar en producción)
+    const defaultPassword = '1';
+    final adminPassword = _hashPassword(defaultPassword);
     
     await db.insert('usuarios', {
       'nombre': 'Administrador',
@@ -312,6 +530,70 @@ class DbHelper {
       ''');
       
       debugPrint('✅ Tabla de cierres de lote creada exitosamente');
+    }
+    
+    // Migración de versión 3 a 4: Agregar campos fiscales a tabla factura
+    if (oldVersion < 4) {
+      debugPrint('📝 Agregando campos fiscales a tabla factura...');
+      
+      await db.execute('ALTER TABLE factura ADD COLUMN tipo_documento TEXT NOT NULL DEFAULT "Factura"');
+      await db.execute('ALTER TABLE factura ADD COLUMN base_imponible REAL NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE factura ADD COLUMN monto_iva REAL NOT NULL DEFAULT 0');
+      
+      debugPrint('✅ Campos fiscales agregados exitosamente');
+      debugPrint('   - tipo_documento: Tipo de documento fiscal');
+      debugPrint('   - base_imponible: Subtotal sin IVA');
+      debugPrint('   - monto_iva: Monto del IVA (16%)');
+    }
+    
+    // Migración de versión 4 a 5: Agregar número de control
+    if (oldVersion < 5) {
+      debugPrint('📝 Agregando número de control a tabla factura...');
+      
+      // Agregar columna numero_control
+      await db.execute('ALTER TABLE factura ADD COLUMN numero_control TEXT');
+      
+      // Generar números de control para facturas existentes
+      final facturas = await db.query('factura', orderBy: 'id ASC');
+      
+      if (facturas.isNotEmpty) {
+        debugPrint('   Generando números de control para ${facturas.length} facturas existentes...');
+        
+        for (int i = 0; i < facturas.length; i++) {
+          final facturaId = facturas[i]['id'];
+          final numeroControl = _formatearNumeroControl(i + 1);
+          
+          await db.update(
+            'factura',
+            {'numero_control': numeroControl},
+            where: 'id = ?',
+            whereArgs: [facturaId],
+          );
+        }
+        
+        debugPrint('   ✅ Números de control generados para facturas existentes');
+      }
+      
+      // Crear índice único para numero_control
+      await db.execute('CREATE UNIQUE INDEX idx_numero_control ON factura(numero_control)');
+      
+      debugPrint('✅ Número de control agregado exitosamente');
+      debugPrint('   - Formato: 00-0000001 (correlativo único)');
+      debugPrint('   - Índice único creado para validación');
+    }
+    
+    // Migración de versión 5 a 6: Agregar campo descripcion a productos
+    if (oldVersion < 6) {
+      debugPrint('📝 Agregando campo descripcion a tabla productos...');
+      
+      try {
+        await db.execute('ALTER TABLE productos ADD COLUMN descripcion TEXT');
+        
+        debugPrint('✅ Campo agregado exitosamente a tabla productos');
+        debugPrint('   - descripcion: Descripción detallada del producto');
+      } catch (e) {
+        debugPrint('⚠️ Error agregando campo a productos (puede que ya exista): $e');
+      }
     }
   }
 
@@ -439,6 +721,218 @@ class DbHelper {
     }
   }
 
+  /// Crear un nuevo producto
+  /// 
+  /// Retorna el ID del producto creado
+  Future<int> crearProducto({
+    required String codArticulo,
+    required String codBarras,
+    required String nombre,
+    required String descripcion,
+    required double precio,
+  }) async {
+    final db = await database;
+    
+    try {
+      debugPrint('📦 Creando producto: $nombre');
+      
+      final productoId = await db.insert('productos', {
+        'cod_articulo': codArticulo,
+        'cod_barras': codBarras.isEmpty ? null : codBarras,
+        'nombre': nombre,
+        'descripcion': descripcion.isEmpty ? null : descripcion,
+        'precio': precio,
+        'fecha_creacion': DateTime.now().toIso8601String(),
+      });
+      
+      debugPrint('✅ Producto creado con ID: $productoId');
+      return productoId;
+    } catch (e) {
+      debugPrint('❌ Error creando producto: $e');
+      rethrow;
+    }
+  }
+
+  /// Crear existencia inicial para un producto
+  /// 
+  /// Retorna el ID de la existencia creada
+  Future<int> crearExistencia({
+    required int productoId,
+    required double cantidad,
+  }) async {
+    final db = await database;
+    
+    try {
+      debugPrint('📊 Creando existencia para producto ID: $productoId');
+      
+      // Obtener código de artículo del producto
+      final producto = await db.query(
+        'productos',
+        columns: ['cod_articulo'],
+        where: 'id = ?',
+        whereArgs: [productoId],
+        limit: 1,
+      );
+      
+      if (producto.isEmpty) {
+        throw Exception('Producto no encontrado con ID: $productoId');
+      }
+      
+      final codArticulo = producto.first['cod_articulo'] as String;
+      
+      final existenciaId = await db.insert('existencias', {
+        'producto_id': productoId,
+        'cod_articulo': codArticulo,
+        'stock': cantidad,
+        'ultima_actualizacion': DateTime.now().toIso8601String(),
+      });
+      
+      debugPrint('✅ Existencia creada con ID: $existenciaId (Stock: $cantidad)');
+      return existenciaId;
+    } catch (e) {
+      debugPrint('❌ Error creando existencia: $e');
+      rethrow;
+    }
+  }
+
+  /// Buscar producto por código de artículo o código de barras
+  /// 
+  /// Retorna el producto si existe, null si no se encuentra
+  Future<Map<String, dynamic>?> buscarProductoPorCodigo(String codigo) async {
+    final db = await database;
+    
+    try {
+      final results = await db.rawQuery('''
+        SELECT 
+          p.id,
+          p.cod_articulo,
+          p.cod_barras,
+          p.nombre,
+          p.descripcion,
+          p.precio,
+          e.stock
+        FROM productos p
+        LEFT JOIN existencias e ON p.id = e.producto_id
+        WHERE p.cod_articulo = ? OR p.cod_barras = ?
+        LIMIT 1
+      ''', [codigo, codigo]);
+      
+      return results.isNotEmpty ? results.first : null;
+    } catch (e) {
+      debugPrint('❌ Error buscando producto por código: $e');
+      return null;
+    }
+  }
+
+  /// Actualizar un producto existente
+  /// 
+  /// Retorna true si se actualizó correctamente
+  Future<bool> actualizarProducto({
+    required int productoId,
+    required String codBarras,
+    required String nombre,
+    required String descripcion,
+    required double precio,
+    required double stock,
+  }) async {
+    final db = await database;
+    
+    try {
+      debugPrint('📝 Actualizando producto ID: $productoId');
+      
+      await db.transaction((txn) async {
+        // Actualizar producto
+        await txn.update(
+          'productos',
+          {
+            'cod_barras': codBarras.isEmpty ? null : codBarras,
+            'nombre': nombre,
+            'descripcion': descripcion.isEmpty ? null : descripcion,
+            'precio': precio,
+          },
+          where: 'id = ?',
+          whereArgs: [productoId],
+        );
+        
+        // Actualizar stock
+        await txn.update(
+          'existencias',
+          {
+            'stock': stock,
+            'ultima_actualizacion': DateTime.now().toIso8601String(),
+          },
+          where: 'producto_id = ?',
+          whereArgs: [productoId],
+        );
+      });
+      
+      debugPrint('✅ Producto actualizado correctamente');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error actualizando producto: $e');
+      return false;
+    }
+  }
+
+  /// Eliminar un producto
+  /// 
+  /// Verifica si el producto está en facturas antes de eliminar
+  /// Retorna un Map con 'success' y 'message'
+  Future<Map<String, dynamic>> eliminarProducto(int productoId) async {
+    final db = await database;
+    
+    try {
+      debugPrint('🗑️ Verificando si se puede eliminar producto ID: $productoId');
+      
+      // Verificar si el producto está en alguna factura
+      final facturas = await db.rawQuery('''
+        SELECT COUNT(*) as count
+        FROM factura_detalle
+        WHERE producto_id = ?
+      ''', [productoId]);
+      
+      final count = Sqflite.firstIntValue(facturas) ?? 0;
+      
+      if (count > 0) {
+        debugPrint('⚠️ No se puede eliminar: producto usado en $count factura(s)');
+        return {
+          'success': false,
+          'message': 'No se puede eliminar este producto porque está registrado en $count factura(s). '
+                    'Los productos con historial de ventas deben mantenerse en el sistema.',
+        };
+      }
+      
+      // Si no está en facturas, proceder a eliminar
+      await db.transaction((txn) async {
+        // Eliminar existencias primero
+        await txn.delete(
+          'existencias',
+          where: 'producto_id = ?',
+          whereArgs: [productoId],
+        );
+        
+        // Eliminar producto
+        await txn.delete(
+          'productos',
+          where: 'id = ?',
+          whereArgs: [productoId],
+        );
+      });
+      
+      debugPrint('✅ Producto eliminado correctamente');
+      return {
+        'success': true,
+        'message': 'Producto eliminado exitosamente',
+      };
+    } catch (e) {
+      debugPrint('❌ Error eliminando producto: $e');
+      return {
+        'success': false,
+        'message': 'Error al eliminar el producto: $e',
+      };
+    }
+  }
+
   // ============================================================================
   // MÉTODOS CRUD PARA CLIENTES
   // ============================================================================
@@ -487,9 +981,16 @@ class DbHelper {
   // ============================================================================
 
   /// Crear una nueva factura con sus detalles
+  /// 
+  /// IMPORTANTE: El número de control se genera automáticamente si no se proporciona.
+  /// Solo proporciona un número de control manualmente en casos especiales (migraciones, etc.)
   Future<int> crearFactura({
     required int clienteId,
     required int usuarioId,
+    String? numeroControl, // Opcional - se genera automáticamente si es null
+    String tipoDocumento = 'Factura',
+    required double baseImponible,
+    required double montoIva,
     required double tasaUsd,
     required double tasaEur,
     required double total,
@@ -509,12 +1010,23 @@ class DbHelper {
     final db = await database;
     int facturaId = 0;
     
+    // IMPORTANTE: Generar número de control ANTES de la transacción
+    // para evitar deadlock (generarNumeroControl hace queries a la BD)
+    final numeroControlFinal = numeroControl ?? await generarNumeroControl();
+    
+    debugPrint('📄 Creando factura con número de control: $numeroControlFinal');
+    
     await db.transaction((txn) async {
+      
       // Insertar cabecera de factura
       facturaId = await txn.insert('factura', {
+        'numero_control': numeroControlFinal,
         'fecha_creacion': DateTime.now().toIso8601String(),
         'cliente_id': clienteId,
         'usuario_id': usuarioId,
+        'tipo_documento': tipoDocumento,
+        'base_imponible': baseImponible,
+        'monto_iva': montoIva,
         'tasa_usd': tasaUsd,
         'tasa_eur': tasaEur,
         'total': total,
@@ -683,6 +1195,23 @@ class DbHelper {
   Future<List<Map<String, dynamic>>> obtenerUsuarios() async {
     final db = await database;
     return await db.query('usuarios', orderBy: 'nombre ASC');
+  }
+
+  /// Actualizar contraseña de un usuario
+  Future<bool> actualizarClaveUsuario(String usuario, String nuevaClaveHash) async {
+    try {
+      final db = await database;
+      final count = await db.update(
+        'usuarios',
+        {'clave': nuevaClaveHash},
+        where: 'usuario = ?',
+        whereArgs: [usuario],
+      );
+      return count > 0;
+    } catch (e) {
+      debugPrint('❌ Error actualizando clave de usuario: $e');
+      return false;
+    }
   }
 
   // ============================================================================

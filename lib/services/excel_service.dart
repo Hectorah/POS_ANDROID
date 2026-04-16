@@ -575,6 +575,9 @@ class ExcelService {
       'success': totalProcesados > 0,
       'message': mensaje,
       'count': totalProcesados,
+      'nuevos': productosImportados,
+      'actualizados': productosActualizados,
+      'omitidos': filasOmitidas,
     };
   }
 

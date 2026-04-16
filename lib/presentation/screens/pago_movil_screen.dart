@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../services/ubii_pago_movil_service.dart';
 import '../../models/pago_movil_transaction.dart';
-import '../../core/ubii_config.dart';
+import '../../core/app_config.dart';
+import '../widgets/custom_snackbar.dart';
 
 /// Pantalla para VERIFICAR pagos mediante Pago Móvil con Ubii
 /// 
@@ -70,14 +71,28 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
       
       if (success) {
         setState(() => _serviceInitialized = true);
-        _showMessage('✅ Servicio inicializado correctamente', isError: false);
+        if (mounted) {
+          CustomSnackBar.success(context, 'Servicio inicializado correctamente');
+        }
       } else {
-        _showMessage('❌ Error al inicializar el servicio', isError: true);
+        if (mounted) {
+          await ErrorDialog.ubiiAuthError(
+            context,
+            details: 'No se pudo inicializar el servicio de Pago Móvil.\nVerifica las credenciales de Ubii en la configuración.',
+          );
+        }
       }
     } catch (e) {
-      _showMessage('❌ Error: $e', isError: true);
+      if (mounted) {
+        await ErrorDialog.networkError(
+          context,
+          details: 'Error al inicializar servicio de Pago Móvil:\n$e',
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -88,7 +103,7 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
     }
     
     if (!_serviceInitialized) {
-      _showMessage('⚠️ El servicio no está inicializado', isError: true);
+      CustomSnackBar.warning(context, 'El servicio no está inicializado');
       return;
     }
     
@@ -117,7 +132,7 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
             orderNumber: orderNumber,
             bankAba: _selectedBankCode!,
             phoneCliente: _phoneClienteController.text,
-            phoneComercio: UbiiConfig.phoneComercio,
+            phoneComercio: AppConfig.pagoMovilTelefono,
             monto: monto,
             cedulaCliente: '', // No se requiere para verificación
             referencia: result['ref'] ?? _referenciaController.text,
@@ -128,23 +143,24 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
           
           setState(() {});
           
-          _showMessage(
-            '✅ Pago verificado! Ref: ${_verifiedTransaction!.referencia}',
-            isError: false,
-          );
+          if (mounted) {
+            CustomSnackBar.success(
+              context,
+              'Pago verificado! Ref: ${_verifiedTransaction!.referencia}',
+            );
+          }
           
           _mostrarDialogoExito();
         } else {
           // ❌ Pago no verificado
           final errorMsg = result['codS'] ?? 'Pago no encontrado o inválido';
-          _showMessage('❌ $errorMsg', isError: true);
           
           setState(() {
             _verifiedTransaction = PagoMovilTransaction(
               orderNumber: orderNumber,
               bankAba: _selectedBankCode!,
               phoneCliente: _phoneClienteController.text,
-              phoneComercio: UbiiConfig.phoneComercio,
+              phoneComercio: AppConfig.pagoMovilTelefono,
               monto: monto,
               cedulaCliente: '',
               referencia: _referenciaController.text,
@@ -154,14 +170,41 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
               responseMessage: result['codS'],
             );
           });
+          
+          if (mounted) {
+            await ErrorDialog.pagoMovilError(
+              context,
+              details: 'Referencia: ${_referenciaController.text}\n'
+                      'Banco: $_selectedBankCode\n'
+                      'Monto: Bs. ${monto.toStringAsFixed(2)}\n'
+                      'Código: ${result['codR']}\n'
+                      'Mensaje: $errorMsg',
+            );
+          }
         }
       } else {
-        _showMessage('❌ Error de conexión con Ubii', isError: true);
+        if (mounted) {
+          await ErrorDialog.networkError(
+            context,
+            details: 'No se recibió respuesta del servidor de Ubii.\n'
+                    'Verifica tu conexión a internet.',
+          );
+        }
       }
     } catch (e) {
-      _showMessage('❌ Error: $e', isError: true);
+      if (mounted) {
+        await ErrorDialog.genericError(
+          context,
+          message: 'Ocurrió un error al verificar el Pago Móvil',
+          details: 'Error: $e\n'
+                  'Referencia: ${_referenciaController.text}\n'
+                  'Banco: $_selectedBankCode',
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 

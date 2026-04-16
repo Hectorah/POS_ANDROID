@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../database/db_helper.dart';
+import '../DATABASE/db_helper.dart';
 import '../models/app_models.dart';
 
 /// Servicio de autenticación
@@ -63,6 +63,30 @@ class AuthService {
     } catch (e) {
       debugPrint('❌ Error obteniendo usuarios: $e');
       return [];
+    }
+  }
+
+  /// Cambiar contraseña de un usuario
+  Future<bool> changePassword(String usuario, String nuevaClave) async {
+    try {
+      debugPrint('🔐 Cambiando contraseña para usuario: $usuario');
+      
+      // Hashear la nueva contraseña
+      final claveHasheada = DbHelper.instance.hashPassword(nuevaClave);
+      
+      // Actualizar en la base de datos
+      final success = await DbHelper.instance.actualizarClaveUsuario(usuario, claveHasheada);
+      
+      if (success) {
+        debugPrint('✅ Contraseña actualizada exitosamente');
+      } else {
+        debugPrint('❌ Error actualizando contraseña');
+      }
+      
+      return success;
+    } catch (e) {
+      debugPrint('❌ Error cambiando contraseña: $e');
+      return false;
     }
   }
 }

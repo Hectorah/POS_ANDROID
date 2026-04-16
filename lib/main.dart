@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'providers/user_provider.dart';
@@ -12,6 +13,18 @@ import 'services/exchange_rate_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // ============================================================================
+  // CARGAR VARIABLES DE ENTORNO
+  // ============================================================================
+  debugPrint('🔐 Cargando variables de entorno desde .env...');
+  try {
+    await dotenv.load(fileName: '.env');
+    debugPrint('✅ Variables de entorno cargadas correctamente');
+  } catch (e) {
+    debugPrint('⚠️ Error cargando .env: $e');
+    debugPrint('   La app usará valores por defecto');
+  }
   
   // ============================================================================
   // INICIALIZACIÓN DE LA BASE DE DATOS

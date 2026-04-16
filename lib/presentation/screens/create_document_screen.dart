@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
 import '../../models/pago_movil_transaction.dart';
+import '../widgets/custom_snackbar.dart';
 import 'pago_movil_screen.dart';
 
 // Modelos locales simplificados (sin backend)
@@ -211,7 +212,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
 
   /// Buscar cliente por identificación
   Future<void> _searchClient() async {
-    final identificacion = '${_selectedRifType}-${_rifSearchController.text.trim()}';
+    final identificacion = '$_selectedRifType-${_rifSearchController.text.trim()}';
     
     if (_rifSearchController.text.trim().isEmpty) {
       _showSnackBar('Ingrese un número de identificación', AppColors.warning);
@@ -239,7 +240,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       }
     } catch (e) {
       setState(() => _isSearchingClient = false);
-      _showSnackBar('Error buscando cliente: $e', AppColors.error);
+      if (mounted) {
+        await ErrorDialog.databaseError(
+          context,
+          details: 'Error al buscar cliente en la base de datos:\n$e\n\nIdentificación: $identificacion',
+        );
+      }
       debugPrint('❌ Error buscando cliente: $e');
     }
   }
@@ -450,7 +456,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     } catch (e) {
       debugPrint('❌ Error cargando productos: $e');
       setState(() => _isLoadingProducts = false);
-      _showSnackBar('Error cargando productos: $e', AppColors.error);
+      if (mounted) {
+        await ErrorDialog.databaseError(
+          context,
+          details: 'Error al cargar productos desde la base de datos:\n$e',
+        );
+      }
     }
   }
 
@@ -603,11 +614,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     } catch (e) {
       debugPrint('❌ Error procesando pago: $e');
       _showSnackBar('Error procesando pago: $e', AppColors.error);
-    } finally {
+      
+      // Liberar el botón después de un error
       if (mounted) {
         setState(() => _isProcessingPayment = false);
       }
     }
+    
+    // IMPORTANTE: NO usar finally aquí porque los métodos internos
+    // pueden mostrar diálogos con await, y el finally se ejecutaría
+    // antes de que el usuario cierre el diálogo.
+    // Cada método interno debe manejar su propio estado.
   }
 
   /// Procesar pago con tarjeta usando Ubii POS
@@ -667,6 +684,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             'Error crítico: No se recibió respuesta',
             AppColors.error,
           );
+          setState(() => _isProcessingPayment = false);
         }
         return;
       }
@@ -685,11 +703,36 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             AppColors.success,
           );
           
-          // Guardar factura en BD con datos de Ubii POS
-          await _saveInvoice(ubiiData: resultado);
-          
-          // Mostrar diálogo de éxito
-          _showSuccessDialog(resultado);
+          try {
+            // Guardar factura en BD con datos de Ubii POS
+            await _saveInvoice(ubiiData: resultado);
+            
+            // Mostrar diálogo de éxito
+            _showSuccessDialog(resultado);
+            
+            // Liberar botón después de mostrar diálogo de éxito
+            setState(() => _isProcessingPayment = false);
+          } catch (e) {
+            debugPrint('❌ Error guardando factura después de pago aprobado: $e');
+            // Mostrar error pero indicar que el pago SÍ fue procesado
+            if (mounted) {
+              await ErrorDialog.show(
+                context,
+                title: 'Pago Aprobado - Error al Guardar',
+                message: 'El pago fue aprobado por Ubii POS pero hubo un error al guardar la factura en la base de datos.',
+                errorCode: ErrorCodes.invoiceCreation,
+                technicalDetails: 'Error: $e\n'
+                                'Referencia: ${resultado['reference']}\n'
+                                'Auth: ${resultado['authCode']}\n'
+                                'IMPORTANTE: El pago SÍ fue procesado. Verifica el voucher del POS.',
+              );
+            }
+            
+            // Liberar botón después de mostrar error
+            if (mounted) {
+              setState(() => _isProcessingPayment = false);
+            }
+          }
         }
       } else if (resultado['code'] == 'NO_DATA') {
         // Ubii POS no retornó datos pero volvió a la app
@@ -703,11 +746,29 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             AppColors.success,
           );
           
-          // Guardar factura sin datos de Ubii
-          await _saveInvoice();
-          
-          // Mostrar diálogo de éxito
-          _showSuccessDialog(null);
+          try {
+            // Guardar factura sin datos de Ubii
+            await _saveInvoice();
+            
+            // Mostrar diálogo de éxito
+            _showSuccessDialog(null);
+            
+            // Liberar botón después de mostrar diálogo de éxito
+            setState(() => _isProcessingPayment = false);
+          } catch (e) {
+            debugPrint('❌ Error guardando factura: $e');
+            if (mounted) {
+              await ErrorDialog.databaseError(
+                context,
+                details: 'Error al guardar la factura:\n$e',
+              );
+            }
+            
+            // Liberar botón después de mostrar error
+            if (mounted) {
+              setState(() => _isProcessingPayment = false);
+            }
+          }
         }
       } else if (resultado['code'] == 'CANCELLED') {
         // Usuario canceló la transacción
@@ -718,6 +779,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             'Transacción cancelada',
             AppColors.warning,
           );
+          setState(() => _isProcessingPayment = false);
         }
       } else if (resultado['code'] == 'ERROR') {
         // Error de comunicación o app no instalada
@@ -729,6 +791,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             mensaje,
             AppColors.error,
           );
+          setState(() => _isProcessingPayment = false);
         }
       } else {
         // ❌ RECHAZADA o ERROR
@@ -736,7 +799,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         debugPrint('❌ Pago rechazado: $mensaje');
         
         if (mounted) {
-          _showSnackBar('❌ $mensaje', AppColors.error);
+          await ErrorDialog.show(
+            context,
+            title: 'Pago Rechazado',
+            message: mensaje,
+            errorCode: ErrorCodes.ubiiPayment,
+            technicalDetails: 'Código: ${resultado['code']}\n'
+                            'Terminal: ${resultado['terminal']}\n'
+                            'Lote: ${resultado['lote']}\n'
+                            'Monto: \$${_total.toStringAsFixed(2)}',
+          );
+          setState(() => _isProcessingPayment = false);
         }
       }
     } catch (e) {
@@ -745,7 +818,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       
       debugPrint('❌ Error en pago con tarjeta: $e');
       if (mounted) {
-        _showSnackBar('Error: $e', AppColors.error);
+        await ErrorDialog.genericError(
+          context,
+          message: 'Ocurrió un error al procesar el pago con tarjeta',
+          details: 'Error: $e\n'
+                  'Monto: \$${_total.toStringAsFixed(2)}',
+        );
       }
     }
   }
@@ -769,10 +847,29 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         AppColors.success,
       );
       
-      // Guardar factura en BD
-      await _saveInvoice();
-      
-      _showSuccessDialog(null);
+      try {
+        // Guardar factura en BD
+        await _saveInvoice();
+        
+        _showSuccessDialog(null);
+        setState(() => _isProcessingPayment = false);
+      } catch (e) {
+        debugPrint('❌ Error guardando factura: $e');
+        if (mounted) {
+          await ErrorDialog.show(
+            context,
+            title: 'Error al Guardar Factura',
+            message: 'El pago fue procesado pero hubo un error al guardar la factura en la base de datos.',
+            errorCode: ErrorCodes.invoiceCreation,
+            technicalDetails: 'Error: $e\n'
+                            'Método de pago: $_selectedPaymentMethod\n'
+                            'Monto: \${_total.toStringAsFixed(2)}',
+          );
+        }
+        if (mounted) {
+          setState(() => _isProcessingPayment = false);
+        }
+      }
     }
   }
 
@@ -811,43 +908,77 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             AppColors.success,
           );
           
-          // Guardar factura con referencia del Pago Móvil
-          await _saveInvoice(
-            pagoMovilData: {
-              'referencia': transaction.referencia,
-              'orderNumber': transaction.orderNumber,
-              'banco': transaction.bankAba,
-              'telefono': transaction.phoneCliente,
-            },
-          );
-          
-          _showSuccessDialog(null);
+          try {
+            // Guardar factura con referencia del Pago Móvil
+            await _saveInvoice(
+              pagoMovilData: {
+                'referencia': transaction.referencia,
+                'orderNumber': transaction.orderNumber,
+                'banco': transaction.bankAba,
+                'telefono': transaction.phoneCliente,
+              },
+            );
+            
+            _showSuccessDialog(null);
+            setState(() => _isProcessingPayment = false);
+          } catch (e) {
+            debugPrint('❌ Error guardando factura después de Pago Móvil aprobado: $e');
+            if (mounted) {
+              await ErrorDialog.show(
+                context,
+                title: 'Pago Móvil Aprobado - Error al Guardar',
+                message: 'El Pago Móvil fue aprobado pero hubo un error al guardar la factura en la base de datos.',
+                errorCode: ErrorCodes.invoiceCreation,
+                technicalDetails: 'Error: $e\n'
+                                'Referencia: ${transaction.referencia}\n'
+                                'Orden: ${transaction.orderNumber}\n'
+                                'Banco: ${transaction.bankAba}\n'
+                                'IMPORTANTE: El pago SÍ fue procesado.',
+              );
+            }
+            if (mounted) {
+              setState(() => _isProcessingPayment = false);
+            }
+          }
         }
       } else if (transaction != null) {
         // Pago no aprobado (rechazado, timeout, error)
         debugPrint('❌ Pago Móvil no aprobado: ${transaction.status.displayName}');
         
         if (mounted) {
-          _showSnackBar(
-            '❌ Pago Móvil ${transaction.status.displayName}',
-            AppColors.error,
+          await ErrorDialog.show(
+            context,
+            title: 'Pago Móvil ${transaction.status.displayName}',
+            message: transaction.errorMessage ?? 'El pago no fue aprobado. Verifica los datos e intenta nuevamente.',
+            errorCode: ErrorCodes.pagoMovilInvalid,
+            technicalDetails: 'Referencia: ${transaction.referencia}\n'
+                            'Banco: ${transaction.bankAba}\n'
+                            'Teléfono: ${transaction.phoneCliente}\n'
+                            'Monto: Bs. ${transaction.monto.toStringAsFixed(2)}\n'
+                            'Estado: ${transaction.status.displayName}\n'
+                            'Código: ${transaction.responseCode}\n'
+                            'Mensaje: ${transaction.responseMessage}',
           );
+          setState(() => _isProcessingPayment = false);
         }
       } else {
         // Usuario canceló o cerró la pantalla
         debugPrint('⚠️ Pago Móvil cancelado por el usuario');
         
         if (mounted) {
-          _showSnackBar(
-            'Pago Móvil cancelado',
-            AppColors.warning,
-          );
+          CustomSnackBar.warning(context, 'Pago Móvil cancelado');
+          setState(() => _isProcessingPayment = false);
         }
       }
     } catch (e) {
       debugPrint('❌ Error en Pago Móvil: $e');
       if (mounted) {
-        _showSnackBar('Error en Pago Móvil: $e', AppColors.error);
+        await ErrorDialog.genericError(
+          context,
+          message: 'Ocurrió un error al procesar el Pago Móvil',
+          details: 'Error: $e\n'
+                  'Monto: Bs. ${(_total * _exchangeRate).toStringAsFixed(2)}',
+        );
       }
     }
   }
@@ -866,6 +997,23 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       // Calcular montos
       final montoUsd = _total;
       final montoBs = _total * _exchangeRate;
+      
+      // ==================== CÁLCULOS FISCALES ====================
+      // Calcular base imponible (subtotal sin IVA)
+      final baseImponible = _subtotal;
+      
+      // Calcular monto de IVA (16%)
+      final montoIva = _iva;
+      
+      // Tipo de documento fiscal (por defecto "Factura")
+      const tipoDocumento = 'Factura';
+      
+      debugPrint('📊 Cálculos fiscales:');
+      debugPrint('   Base imponible: \$${baseImponible.toStringAsFixed(2)}');
+      debugPrint('   IVA (16%): \$${montoIva.toStringAsFixed(2)}');
+      debugPrint('   Total: \$${_total.toStringAsFixed(2)}');
+      debugPrint('   Tipo documento: $tipoDocumento');
+      // =========================================================
       
       // Preparar referencia de pago
       String? referenciaPago;
@@ -891,6 +1039,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       final facturaId = await DbHelper.instance.crearFactura(
         clienteId: _selectedClient!.id ?? 0,
         usuarioId: usuarioId,
+        baseImponible: _subtotal,
+        montoIva: _iva,
         tasaUsd: _exchangeRate,
         tasaEur: 0.0, // No se usa EUR por ahora
         total: _total,
@@ -928,7 +1078,13 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     } catch (e) {
       debugPrint('❌ Error guardando factura: $e');
       if (mounted) {
-        _showSnackBar('Error guardando factura: $e', AppColors.error);
+        await ErrorDialog.databaseError(
+          context,
+          details: 'Error al guardar la factura en la base de datos:\n$e\n\n'
+                  'Cliente: ${_selectedClient?.nombre}\n'
+                  'Total: \$${_total.toStringAsFixed(2)}\n'
+                  'Método: $_selectedPaymentMethod',
+        );
       }
       rethrow;
     }

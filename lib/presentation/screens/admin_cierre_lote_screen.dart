@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
+import '../widgets/custom_snackbar.dart';
 
 /// Pantalla de administración para realizar cierre de lote
 class AdminCierreLoteScreen extends StatefulWidget {
@@ -64,7 +65,10 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
     } catch (e) {
       debugPrint('❌ Error cargando datos: $e');
       setState(() => _isLoading = false);
-      _mostrarError('Error cargando datos: $e');
+      await _mostrarError(
+        'Error al cargar los datos de cierre de lote',
+        detalles: 'Error: $e',
+      );
     }
   }
 
@@ -89,7 +93,10 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
       final resultado = await _ubiiService.cerrarLoteDelDia(quick: true);
 
       if (resultado == null) {
-        _mostrarError('No se recibió respuesta del POS Ubii');
+        await _mostrarError(
+          'No se recibió respuesta del POS Ubii',
+          detalles: 'Tipo: Liquidación inmediata (Q)',
+        );
         return;
       }
 
@@ -98,7 +105,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
       if (resultado['code'] == '00') {
         // ✅ Cierre exitoso - Registrar en BD
         await DbHelper.instance.registrarCierreLote(
-          usuarioId: 1, // TODO: Obtener ID del usuario actual
+          usuarioId: 1, 
           tipoCierre: 'Q', // Liquidación inmediata
           ubiiData: resultado,
         );
@@ -114,13 +121,27 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
       } else if (resultado['code'] == 'CANCELLED') {
         _mostrarAlerta('Cierre cancelado por el usuario');
       } else if (resultado['code'] == 'ERROR') {
-        _mostrarError('Error: ${resultado['message']}');
+        await _mostrarError(
+          'Error al realizar el cierre de lote',
+          detalles: 'Código: ${resultado['code']}\n'
+                   'Mensaje: ${resultado['message']}\n'
+                   'Terminal: ${resultado['terminal']}\n'
+                   'Lote: ${resultado['lote']}',
+        );
       } else {
-        _mostrarError('Error desconocido: ${resultado['message']}');
+        await _mostrarError(
+          'Error desconocido al realizar el cierre',
+          detalles: 'Código: ${resultado['code']}\n'
+                   'Mensaje: ${resultado['message']}\n'
+                   'Respuesta completa: $resultado',
+        );
       }
     } catch (e) {
       debugPrint('❌ Error en cierre de lote: $e');
-      _mostrarError('Error: $e');
+      await _mostrarError(
+        'Ocurrió un error al procesar el cierre de lote',
+        detalles: 'Error: $e',
+      );
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -243,24 +264,18 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
     );
   }
 
-  void _mostrarError(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
+  Future<void> _mostrarError(String mensaje, {String? detalles}) async {
+    await ErrorDialog.show(
+      context,
+      title: 'Error en Cierre de Lote',
+      message: mensaje,
+      errorCode: ErrorCodes.ubiiCierre,
+      technicalDetails: detalles,
     );
   }
 
   void _mostrarAlerta(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    CustomSnackBar.warning(context, mensaje);
   }
 
   @override
@@ -363,7 +378,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                     descripcion,
                     style: TextStyle(
                       fontSize: 14,
-                      color: iconColor.withOpacity(0.8),
+                      color: iconColor.withValues(alpha:0.8),
                     ),
                   ),
                 ],
@@ -511,7 +526,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -603,7 +618,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: CircleAvatar(
-                      backgroundColor: esExitoso ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                      backgroundColor: esExitoso ? Colors.green.withValues(alpha:0.1) : Colors.red.withValues(alpha:0.1),
                       child: Icon(
                         esExitoso ? Icons.check : Icons.error,
                         color: esExitoso ? Colors.green : Colors.red,

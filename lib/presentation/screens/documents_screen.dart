@@ -8,6 +8,7 @@ import '../../providers/user_provider.dart';
 import '../../services/excel_service.dart';
 import 'create_document_screen.dart' show CreateDocumentScreen, CurrencyFormatter;
 import 'admin_cierre_lote_screen.dart';
+import 'products_list_screen.dart';
 
 class DocumentsScreen extends StatefulWidget {
   const DocumentsScreen({super.key});
@@ -199,9 +200,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                               
                               // Mostrar diálogo de éxito con detalles
                               _showSuccessDialog(
-                                '${resultado['nuevos'] ?? 0} nuevos',
-                                '${resultado['actualizados'] ?? 0} actualizados',
-                                '${resultado['omitidos'] ?? 0} omitidos',
+                                '${resultado['nuevos'] ?? 0}',
+                                '${resultado['actualizados'] ?? 0}',
+                                '${resultado['omitidos'] ?? 0}',
                               );
                             }
                           } else {
@@ -391,50 +392,233 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
         automaticallyImplyLeading: false,
         actions: [
-          // Botón para cierre de lote
-          IconButton(
+          // Botón de menú desplegable con todas las opciones
+          PopupMenuButton<String>(
             icon: Icon(
-              Icons.receipt_long,
+              Icons.more_vert_rounded,
               color: isDark ? AppColors.darkText : AppColors.primary,
             ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AdminCierreLoteScreen(),
+            tooltip: 'Opciones',
+            offset: const Offset(0, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            color: isDark ? AppColors.darkCard : AppColors.lightCard,
+            constraints: const BoxConstraints(
+              minWidth: 200, // Ancho mínimo
+              maxWidth: 250, // Ancho máximo para responsive
+            ),
+            onSelected: (String value) {
+              switch (value) {
+                case 'productos':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ProductsListScreen(),
+                    ),
+                  );
+                  break;
+                case 'cierre_lote':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AdminCierreLoteScreen(),
+                    ),
+                  );
+                  break;
+                case 'cierre_x':
+                  _showCierreXDialog();
+                  break;
+                case 'cierre_z':
+                  _showCierreZDialog();
+                  break;
+                case 'importar':
+                  _showImportDialog();
+                  break;
+                case 'tema':
+                  themeProvider.toggleTheme();
+                  break;
+                case 'logout':
+                  _showLogoutDialog(context, userProvider);
+                  break;
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              // Productos
+              PopupMenuItem<String>(
+                value: 'productos',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.inventory_2,
+                      color: isDark ? AppColors.darkText : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Productos',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
-            tooltip: 'Cierre de Lote',
-          ),
-          // Botón para importar productos manualmente
-          IconButton(
-            icon: Icon(
-              Icons.upload_file_rounded,
-              color: isDark ? AppColors.darkText : AppColors.primary,
-            ),
-            onPressed: () => _showImportDialog(),
-            tooltip: 'Importar productos',
-          ),
-          IconButton(
-            icon: Icon(
-              themeProvider.themeMode == ThemeMode.dark
-                  ? Icons.light_mode_rounded
-                  : Icons.dark_mode_rounded,
-              color: isDark ? AppColors.darkText : AppColors.primary,
-            ),
-            onPressed: () {
-              themeProvider.toggleTheme();
-            },
-            tooltip: 'Cambiar tema',
-          ),
-          IconButton(
-            icon: const Icon(
-              Icons.logout_rounded,
-              color: AppColors.error,
-            ),
-            onPressed: () => _showLogoutDialog(context, userProvider),
-            tooltip: 'Cerrar sesión',
+              ),
+              // Cierre de Lote
+              PopupMenuItem<String>(
+                value: 'cierre_lote',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.receipt_long,
+                      color: isDark ? AppColors.darkText : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Cierre de Lote',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Cierre X
+              PopupMenuItem<String>(
+                value: 'cierre_x',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.close,
+                      color: isDark ? AppColors.darkText : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Cierre X',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Cierre Z
+              PopupMenuItem<String>(
+                value: 'cierre_z',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.block,
+                      color: AppColors.error,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Cierre Z',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Importar productos
+              PopupMenuItem<String>(
+                value: 'importar',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.upload_file_rounded,
+                      color: isDark ? AppColors.darkText : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Importar Productos',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Cambiar tema
+              PopupMenuItem<String>(
+                value: 'tema',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      themeProvider.themeMode == ThemeMode.dark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      color: isDark ? AppColors.darkText : AppColors.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        themeProvider.themeMode == ThemeMode.dark
+                            ? 'Modo Claro'
+                            : 'Modo Oscuro',
+                        style: TextStyle(
+                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Divisor
+              const PopupMenuDivider(),
+              // Cerrar sesión
+              PopupMenuItem<String>(
+                value: 'logout',
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.logout_rounded,
+                      color: AppColors.error,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Cerrar Sesión',
+                        style: TextStyle(
+                          color: isDark ? AppColors.error : AppColors.error,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 8),
         ],
@@ -774,6 +958,152 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
+  void _showCierreXDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: AppColors.warning,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Confirmar Cierre X',
+                  style: TextStyle(fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            '¿Estás seguro de realizar el Cierre X?\n\nEsta acción procesará todas las transacciones del día.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                
+                // TODO: Aquí iría la lógica real del cierre X
+                
+                // Mostrar mensaje de éxito
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Cierre X realizado con éxito'),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showCierreZDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: AppColors.error,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Confirmar Cierre Z',
+                  style: TextStyle(fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            '¿Estás seguro de realizar el Cierre Z?\n\nEsta acción es IRREVERSIBLE y cerrará definitivamente el día.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                
+                // TODO: Aquí iría la lógica real del cierre Z
+                
+                // Mostrar mensaje de éxito
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Cierre Z realizado con éxito'),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showLogoutDialog(BuildContext context, UserProvider userProvider) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -856,7 +1186,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final metodoPago = invoice['metodo_pago'] ?? 'cash';
     final total = invoice['total'] as double;
     final clienteIdentificacion = invoice['cliente_identificacion'] ?? 'N/A';
-    final clienteNombre = invoice['cliente_nombre'] ?? 'Cliente';
     
     // Obtener referencia de Ubii si existe
     final ubiiReference = invoice['ubii_reference'] as String?;

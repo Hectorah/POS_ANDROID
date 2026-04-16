@@ -51,17 +51,24 @@ dependencies:
   # Ubii Pago Móvil
   encrypt: ^5.0.3       # Para cifrado AES-256
   jwt_decoder: ^2.0.1   # Para decodificar JWT
+  
+  # Variables de entorno
+  flutter_dotenv: ^5.1.0  # Para cargar variables desde .env
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   
   # Assets de la aplicación
   assets:
+    # Variables de entorno
+    - .env
+    
     # Imágenes generales
     - assets/images/
     
@@ -70,3 +77,11 @@ flutter:
     
     # Logos de la empresa
     - assets/logos/
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/logos/klk.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/logos/klk.png"
+  adaptive_icon_foreground_inset: 20
