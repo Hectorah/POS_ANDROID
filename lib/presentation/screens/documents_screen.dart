@@ -299,16 +299,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 AppColors.info,
                 isDark,
               ),
-              if (omitidos != '0') ...[
-                const SizedBox(height: 12),
-                _buildStatRow(
-                  Icons.warning_rounded,
-                  'Filas omitidas',
-                  omitidos,
-                  AppColors.warning,
-                  isDark,
-                ),
-              ],
             ],
           ),
           actions: [
@@ -969,15 +959,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: Row(
+          title: const Row(
             children: [
               Icon(
                 Icons.warning_amber_rounded,
                 color: AppColors.warning,
                 size: 20,
               ),
-              const SizedBox(width: 8),
-              const Expanded(
+               SizedBox(width: 8),
+               Expanded(
                 child: Text(
                   'Confirmar Cierre X',
                   style: TextStyle(fontSize: 16),
@@ -1031,9 +1021,55 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  void _showCierreZDialog() {
+  void _showCierreZDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
+    // Verificar si ya se hizo cierre de lote hoy
+    final tieneCierreLoteHoy = await DbHelper.instance.yaSeHizoCierreHoy();
+
+    if (!mounted) return;
+
+    if (!tieneCierreLoteHoy) {
+      showDialog(
+        context: context,
+        builder: (BuildContext ctx) {
+          return AlertDialog(
+            backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.block, color: AppColors.error, size: 20),
+                 SizedBox(width: 8),
+                 Expanded(
+                  child: Text(
+                    'Cierre de Lote Requerido',
+                    style: TextStyle(fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            content: const Text(
+              'No se puede realizar el Cierre Z porque no existe un cierre de lote para el día de hoy.\n\nDebe realizar el Cierre de Lote primero.',
+              style: TextStyle(fontSize: 14),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Entendido'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -1042,15 +1078,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: Row(
+          title:const Row(
             children: [
               Icon(
                 Icons.warning_amber_rounded,
                 color: AppColors.error,
                 size: 20,
               ),
-              const SizedBox(width: 8),
-              const Expanded(
+               SizedBox(width: 8),
+               Expanded(
                 child: Text(
                   'Confirmar Cierre Z',
                   style: TextStyle(fontSize: 16),
@@ -1074,18 +1110,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               ),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(dialogContext).pop();
-                
-                // TODO: Aquí iría la lógica real del cierre Z
-                
-                // Mostrar mensaje de éxito
+
+                // [TEST] Cierre Z simulado: cerrar facturas del día
+                // TODO: REVERTIR - reemplazar con lógica real de cierre Z
+                final count = await DbHelper.instance.cerrarFacturasDelDia();
+
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ Cierre Z realizado con éxito'),
+                  SnackBar(
+                    content: Text('✅ Cierre Z realizado — $count factura(s) cerrada(s)'),
                     backgroundColor: AppColors.success,
                     behavior: SnackBarBehavior.floating,
-                    duration: Duration(seconds: 3),
+                    duration: const Duration(seconds: 3),
                   ),
                 );
               },

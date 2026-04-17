@@ -32,6 +32,7 @@ build/
 
 # Carpeta de ejemplo (solo referencia)
 ejemplo/
+file_pos.txt
 
 # IntelliJ related
 *.iml

@@ -81,7 +81,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/logos/klk.png"
+  image_path: "assets/logos/klk_pos.png"
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/logos/klk.png"
+  adaptive_icon_foreground: "assets/logos/klk_pos.png"
   adaptive_icon_foreground_inset: 20

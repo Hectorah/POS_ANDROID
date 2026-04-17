@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
+import '../../services/exchange_rate_service.dart';
 import '../../models/pago_movil_transaction.dart';
 import '../widgets/custom_snackbar.dart';
 import 'pago_movil_screen.dart';
@@ -13,16 +14,18 @@ class ClientModel {
   final int? id;
   final String identificacion;
   final String nombre;
-  final String? correo;
   final String? direccion;
+  final String? telefono;
+  final String? correo;
   final bool agenteRetencion;
 
   ClientModel({
     this.id,
     required this.identificacion,
     required this.nombre,
-    this.correo,
     this.direccion,
+    this.telefono,
+    this.correo,
     this.agenteRetencion = false,
   });
 
@@ -32,8 +35,9 @@ class ClientModel {
       id: map['id'] as int?,
       identificacion: map['identificacion'] ?? '',
       nombre: map['nombre'] ?? '',
-      correo: map['correo'],
       direccion: map['direccion'],
+      telefono: map['telefono'],
+      correo: map['correo'],
       agenteRetencion: (map['agente_retencion'] ?? 0) == 1,
     );
   }
@@ -43,8 +47,9 @@ class ClientModel {
     return {
       'identificacion': identificacion,
       'nombre': nombre,
-      'correo': correo,
       'direccion': direccion,
+      'telefono': telefono,
+      'correo': correo,
       'agente_retencion': agenteRetencion ? 1 : 0,
     };
   }
@@ -159,6 +164,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   final _paymentReferenceController = TextEditingController();
   
   double _exchangeRate = 36.50;
+  bool _isRefreshingRate = false;
   
   bool _isSearchingClient = false;
   bool _isLoadingProducts = false;
@@ -216,6 +222,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
 
   /// Buscar cliente por identificación
   Future<void> _searchClient() async {
+    // Cerrar el teclado
+    FocusScope.of(context).unfocus();
+    
     final identificacion = '$_selectedRifType-${_rifSearchController.text.trim()}';
     
     if (_rifSearchController.text.trim().isEmpty) {
@@ -258,8 +267,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   void _showRegisterClientDialog(String identificacion) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final nombreController = TextEditingController();
-    final correoController = TextEditingController();
     final direccionController = TextEditingController();
+    final telefonoController = TextEditingController();
+    final correoController = TextEditingController();
     bool isAgenteRetencion = false;
 
     showDialog(
@@ -309,7 +319,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     TextField(
                       controller: nombreController,
                       decoration: InputDecoration(
-                        labelText: 'Nombre completo *',
+                        labelText: 'Nombre *',
                         hintText: 'Ej: JUAN PÉREZ',
                         filled: true,
                         fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
@@ -319,6 +329,37 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         prefixIcon: const Icon(Icons.person),
                       ),
                       textCapitalization: TextCapitalization.characters,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: direccionController,
+                      decoration: InputDecoration(
+                        labelText: 'Dirección *',
+                        hintText: 'Ej: CALLE 123, CIUDAD',
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: const Icon(Icons.location_on),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: telefonoController,
+                      decoration: InputDecoration(
+                        labelText: 'Teléfono (opcional)',
+                        hintText: 'Ej: 0414-1234567',
+                        filled: true,
+                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        prefixIcon: const Icon(Icons.phone),
+                      ),
+                      keyboardType: TextInputType.phone,
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -337,25 +378,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       textCapitalization: TextCapitalization.none,
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: direccionController,
-                      decoration: InputDecoration(
-                        labelText: 'Dirección (opcional)',
-                        hintText: 'Ej: CALLE 123, CIUDAD',
-                        filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.location_on),
-                      ),
-                      textCapitalization: TextCapitalization.characters,
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 12),
                     CheckboxListTile(
                       title: const Text('Agente de Retención'),
-                      subtitle: const Text('Cliente sujeto a retención de IVA según SENIAT'),
                       value: isAgenteRetencion,
                       onChanged: (value) {
                         setDialogState(() {
@@ -380,8 +404,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 ElevatedButton.icon(
                   onPressed: () async {
                     final nombre = nombreController.text.trim().toUpperCase();
-                    final correo = correoController.text.trim().toUpperCase();
                     final direccion = direccionController.text.trim().toUpperCase();
+                    final telefono = telefonoController.text.trim();
+                    final correo = correoController.text.trim().toUpperCase();
                     
                     if (nombre.isEmpty) {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -393,13 +418,24 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       return;
                     }
 
+                    if (direccion.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('La dirección es obligatoria'),
+                          backgroundColor: AppColors.error,
+                        ),
+                      );
+                      return;
+                    }
+
                     try {
                       // Registrar cliente en la BD
                       final clienteData = {
                         'identificacion': identificacion,
                         'nombre': nombre,
+                        'direccion': direccion,
+                        'telefono': telefono.isEmpty ? null : telefono,
                         'correo': correo.isEmpty ? null : correo,
-                        'direccion': direccion.isEmpty ? null : direccion,
                         'agente_retencion': isAgenteRetencion ? 1 : 0,
                       };
 
@@ -412,8 +448,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             id: clienteId,
                             identificacion: identificacion,
                             nombre: nombre,
+                            direccion: direccion,
+                            telefono: telefono.isEmpty ? null : telefono,
                             correo: correo.isEmpty ? null : correo,
-                            direccion: direccion.isEmpty ? null : direccion,
                             agenteRetencion: isAgenteRetencion,
                           );
                         });
@@ -525,14 +562,14 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       
       // Verificar stock disponible
       if (existingItem.quantity + 1 > product.stock) {
-        _showSnackBar('Stock insuficiente. Disponible: ${product.stock.toInt()}', AppColors.warning);
+        _showSnackBar('Stock insuficiente. Disponible: ${product.stock.toInt()}', AppColors.warning, topPosition: true);
         return;
       }
       
       setState(() {
         existingItem.quantity++;
       });
-      _showSnackBar('Cantidad actualizada', AppColors.success);
+      _showSnackBar('Producto agregado ✓', AppColors.success, topPosition: true);
     } else {
       // No existe, agregar nuevo
       setState(() {
@@ -546,7 +583,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           quantity: 1,
         ));
       });
-      _showSnackBar('Producto agregado al carrito', AppColors.success);
+      _showSnackBar('Producto agregado ✓', AppColors.success, topPosition: true);
     }
     
     Navigator.pop(context); // Cerrar el modal
@@ -621,6 +658,224 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     });
   }
 
+  void _showEditClientDialog(bool isDark) {
+    if (_selectedClient == null) return;
+    final client = _selectedClient!;
+
+    final parts = client.identificacion.split('-');
+    final rifTypeController = TextEditingController(text: parts.isNotEmpty ? parts[0] : 'V');
+    final rifNumberController = TextEditingController(text: parts.length > 1 ? parts.sublist(1).join('-') : client.identificacion);
+    final nameController = TextEditingController(text: client.nombre);
+    final emailController = TextEditingController(text: client.correo ?? '');
+    final phoneController = TextEditingController(text: client.telefono ?? '');
+    final addressController = TextEditingController(text: client.direccion ?? '');
+    bool isRetentionAgent = client.agenteRetencion;
+    bool isSaving = false;
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            width: double.maxFinite,
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit, color: Colors.white, size: 24),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text('Editar Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                      ),
+                      if (!isSaving)
+                        IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                flex: 2,
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: rifTypeController.text,
+                                  decoration: InputDecoration(
+                                    labelText: 'Tipo',
+                                    filled: true,
+                                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(value: 'V', child: Text('V')),
+                                    DropdownMenuItem(value: 'E', child: Text('E')),
+                                    DropdownMenuItem(value: 'J', child: Text('J')),
+                                    DropdownMenuItem(value: 'G', child: Text('G')),
+                                  ],
+                                  onChanged: isSaving ? null : (v) => rifTypeController.text = v ?? 'V',
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Flexible(
+                                flex: 5,
+                                child: TextFormField(
+                                  controller: rifNumberController,
+                                  decoration: InputDecoration(
+                                    labelText: 'RIF/Cédula',
+                                    filled: true,
+                                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    prefixIcon: const Icon(Icons.badge),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  enabled: !isSaving,
+                                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: nameController,
+                            decoration: InputDecoration(
+                              labelText: 'Nombre completo',
+                              filled: true,
+                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              prefixIcon: const Icon(Icons.person),
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                            enabled: !isSaving,
+                            validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: addressController,
+                            decoration: InputDecoration(
+                              labelText: 'Dirección',
+                              filled: true,
+                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              prefixIcon: const Icon(Icons.location_on),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            maxLines: 2,
+                            enabled: !isSaving,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: phoneController,
+                            decoration: InputDecoration(
+                              labelText: 'Teléfono (opcional)',
+                              filled: true,
+                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              prefixIcon: const Icon(Icons.phone),
+                              hintText: 'Ej: 0414-1234567',
+                            ),
+                            keyboardType: TextInputType.phone,
+                            enabled: !isSaving,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: emailController,
+                            decoration: InputDecoration(
+                              labelText: 'Email',
+                              filled: true,
+                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              prefixIcon: const Icon(Icons.email),
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            enabled: !isSaving,
+                          ),
+                          const SizedBox(height: 16),
+                          CheckboxListTile(
+                            title: const Text('Agente de Retención'),
+                            value: isRetentionAgent,
+                            enabled: !isSaving,
+                            onChanged: (v) => setDialogState(() => isRetentionAgent = v ?? false),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (!isSaving)
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: isSaving ? null : () async {
+                          if (formKey.currentState!.validate()) {
+                            setDialogState(() => isSaving = true);
+                            try {
+                              final identificacion = '${rifTypeController.text}-${rifNumberController.text}';
+                              await DbHelper.instance.actualizarCliente(client.id!, {
+                                'identificacion': identificacion,
+                                'nombre': nameController.text.trim(),
+                                'correo': emailController.text.trim(),
+                                'telefono': phoneController.text.trim(),
+                                'direccion': addressController.text.trim(),
+                                'agente_retencion': isRetentionAgent ? 1 : 0,
+                              });
+                              setState(() {
+                                _selectedClient = ClientModel(
+                                  id: client.id,
+                                  identificacion: identificacion,
+                                  nombre: nameController.text.trim(),
+                                  correo: emailController.text.trim(),
+                                  telefono: phoneController.text.trim(),
+                                  direccion: addressController.text.trim(),
+                                  agenteRetencion: isRetentionAgent,
+                                );
+                              });
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                _showSnackBar('Cliente actualizado', AppColors.success);
+                              }
+                            } catch (e) {
+                              setDialogState(() => isSaving = false);
+                              if (ctx.mounted) _showSnackBar('Error al actualizar: $e', AppColors.error);
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                        child: isSaving
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Text('Guardar'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _proceedToPayment() {
     if (_selectedClient == null) {
       _showSnackBar('Debe seleccionar un cliente', Colors.orange);
@@ -635,13 +890,22 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     });
   }
 
-  void _showSnackBar(String message, Color color) {
+  void _showSnackBar(String message, Color color, {bool topPosition = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        duration: topPosition 
+            ? const Duration(milliseconds: 1200) 
+            : const Duration(seconds: 2),
+        margin: topPosition
+            ? EdgeInsets.only(
+                bottom: MediaQuery.of(context).size.height - 150,
+                left: 10,
+                right: 10,
+              )
+            : null,
       ),
     );
   }
@@ -1573,6 +1837,47 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             );
           },
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: GestureDetector(
+              onTap: _isRefreshingRate ? null : () async {
+                setState(() => _isRefreshingRate = true);
+                await ExchangeRateService.updateRates();
+                await _loadExchangeRate();
+                if (!mounted) return;
+                setState(() => _isRefreshingRate = false);
+                final now = DateTime.now();
+                final fecha = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+                _showSnackBar('Tasa actualizada — $fecha', AppColors.success, topPosition: false);
+                await Future.delayed(const Duration(seconds: 1));
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _isRefreshingRate
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        )
+                      : const Icon(Icons.attach_money, size: 18, color: AppColors.primary),
+                  Text(
+                    _exchangeRate.toStringAsFixed(2),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       body: Form(
         key: _clientFormKey,
@@ -1743,39 +2048,38 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    suffixIcon: _isSearchingClient
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          )
+                        : null,
                   ),
                   keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.search,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                   ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkPrimary : AppColors.primary,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: IconButton(
-                  icon: _isSearchingClient
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.search, color: Colors.white),
-                  onPressed: _isSearchingClient ? null : _searchClient,
-                  tooltip: 'Buscar',
+                  onSubmitted: (_) {
+                    if (!_isSearchingClient) {
+                      _searchClient();
+                    }
+                  },
                 ),
               ),
             ],
           ),
           if (_selectedClient != null) ...[
             const SizedBox(height: 12),
-            Container(
+            GestureDetector(
+              onDoubleTap: () => _showEditClientDialog(isDark),
+              child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppColors.success.withValues(alpha: 0.1),
@@ -1824,6 +2128,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   ),
                 ],
               ),
+            ),
             ),
           ],
         ],
@@ -2109,22 +2414,22 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           
           // Nota informativa para agentes de retención
           if (_selectedClient != null && _selectedClient!.agenteRetencion)
-            const Padding(
-              padding: EdgeInsets.only(top: 4, bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
               child: Row(
                 children: [
                   Icon(
                     Icons.info_outline,
                     size: 14,
-                    color: AppColors.info,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                   ),
-                  SizedBox(width: 4),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       'Cliente Agente de Retención - Se aplica retención del 75% sobre el IVA',
                       style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.info,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -2152,7 +2457,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 style: TextStyle(
                   fontSize: isFinal ? 18 : 14,
                   fontWeight: isFinal ? FontWeight.bold : FontWeight.normal,
-                  color: isRetention ? AppColors.warning : null,
+                  // El texto usa el color normal, no el azul
                 ),
               ),
               Column(
@@ -2163,7 +2468,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     style: TextStyle(
                       fontSize: isFinal ? 24 : 16,
                       fontWeight: FontWeight.bold,
-                      color: isRetention ? AppColors.warning : AppColors.successDark,
+                      color: isRetention ? AppColors.info : AppColors.successDark,
                     ),
                   ),
                   Text(
@@ -2171,7 +2476,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     style: TextStyle(
                       fontSize: isFinal ? 14 : 12,
                       fontWeight: FontWeight.w500,
-                      color: isRetention ? AppColors.warning : AppColors.successDark,
+                      color: isRetention ? AppColors.info : AppColors.successDark,
                     ),
                   ),
                 ],
@@ -2496,7 +2801,6 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   _buildPaymentMethod('cash', 'Efectivo', Icons.money, AppColors.success, isDark),
                   _buildPaymentMethod('card', 'Tarjeta', Icons.credit_card, AppColors.info, isDark),
                   _buildPaymentMethod('pago_movil', 'Pago Móvil', Icons.phone_android, AppColors.primary, isDark),
-                  _buildPaymentMethod('debit_immediate', 'Débito Inm.', Icons.account_balance, AppColors.primaryDark, isDark),
                 ],
               ),
               const SizedBox(height: 100),

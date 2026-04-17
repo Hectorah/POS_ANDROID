@@ -70,29 +70,26 @@ PRODUCTO,SNACK002,7507001002,PAPAS FRITAS,PAPAS FRITAS SABOR NATURAL 200G,1.50,1
 # Columnas:
 # - Identificacion: RIF o Cédula con formato (ej: V-12345678, J-12345678)
 # - Nombre: Nombre completo o razón social (obligatorio)
+# - Direccion: Dirección física (obligatorio)
+# - Telefono: Número de teléfono (opcional)
 # - Correo: Email del cliente (opcional)
-# - Direccion: Dirección física (opcional)
 # - AgenteRetencion: ¿Es agente de retención? (0=No, 1=Sí)
 #   * Los agentes de retención retienen el 75% del IVA
 #   * Solo aplica para empresas autorizadas por SENIAT
 #
 # EJEMPLOS:
-# V-12345678,JUAN PEREZ,juan@email.com,AV PRINCIPAL CARACAS,0
-# J-98765432,EMPRESA XYZ CA,contacto@empresa.com,ZONA INDUSTRIAL,1
-# V-11223344,MARIA RODRIGUEZ,,CALLE 5 MARACAIBO,0
+# V-12345678,JUAN PEREZ,AV PRINCIPAL CARACAS,0414-1234567,juan@email.com,0
+# J-98765432,EMPRESA XYZ CA,ZONA INDUSTRIAL,0212-5551234,contacto@empresa.com,1
+# V-11223344,MARIA RODRIGUEZ,CALLE 5 MARACAIBO,0424-9876543,maria@email.com,0
 # ==========================================
 
-TIPO,Identificacion,Nombre,Correo,Direccion,AgenteRetencion
-CLIENTE,V-12345678,JUAN PEREZ,juan@email.com,AV PRINCIPAL CARACAS,0
-CLIENTE,V-23456789,MARIA RODRIGUEZ,maria@email.com,CALLE 5 MARACAIBO,0
-CLIENTE,V-34567890,PEDRO GOMEZ,pedro@email.com,URB LOS PINOS VALENCIA,0
-CLIENTE,V-45678901,CARMEN SILVA,carmen@email.com,AV BOLIVAR BARQUISIMETO,0
-CLIENTE,V-56789012,LUIS MARTINEZ,luis@email.com,SECTOR CENTRO MERIDA,0
-CLIENTE,J-30123456,COMERCIAL ABC CA,ventas@abc.com,CENTRO COMERCIAL CARACAS,1
-CLIENTE,J-30234567,DISTRIBUIDORA XYZ CA,contacto@xyz.com,ZONA INDUSTRIAL VALENCIA,1
-CLIENTE,J-30345678,INVERSIONES 123 CA,info@inv123.com,TORRE EMPRESARIAL MARACAIBO,1
-CLIENTE,J-30456789,SUPERMERCADO EL AHORRO CA,compras@ahorro.com,AV PRINCIPAL LOS TEQUES,1
-CLIENTE,J-30567890,FARMACIA SALUD CA,ventas@salud.com,CC SAMBIL CARACAS,0
+TIPO,Identificacion,Nombre,Direccion,Telefono,Correo,AgenteRetencion
+CLIENTE,V-12345678,JUAN PEREZ,AV PRINCIPAL CARACAS,0414-1234567,juan@email.com,0
+CLIENTE,V-23456789,MARIA RODRIGUEZ,CALLE 5 MARACAIBO,0424-9876543,maria@email.com,0
+CLIENTE,V-34567890,PEDRO GOMEZ,URB LOS PINOS VALENCIA,0412-5551234,pedro@email.com,0
+CLIENTE,V-45678901,CARMEN SILVA,AV BOLIVAR BARQUISIMETO,0416-7778888,carmen@email.com,0
+CLIENTE,V-56789012,LUIS MARTINEZ,SECTOR CENTRO MERIDA,0426-3334444,luis@email.com,0
+CLIENTE,J-30123456,COMERCIAL ABC CA,CENTRO COMERCIAL CARACAS,0212-5551111,ventas@abc.com,1
 
 # ==========================================
 # FIN DEL ARCHIVO
@@ -105,7 +102,7 @@ CLIENTE,J-30567890,FARMACIA SALUD CA,ventas@salud.com,CC SAMBIL CARACAS,0
 #
 # RESUMEN DE CLIENTES DE EJEMPLO:
 # - 5 Clientes naturales (V-): Personas sin retención
-# - 5 Clientes jurídicos (J-): 4 con retención, 1 sin retención
+# - 5 Clientes jurídicos (J-): 4 con retención, 1 sin retenciónq
 # - Total: 10 clientes para pruebas completas
 #
 # CASOS DE PRUEBA SUGERIDOS:

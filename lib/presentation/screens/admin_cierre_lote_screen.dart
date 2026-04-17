@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
@@ -22,6 +23,9 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   List<Map<String, dynamic>> _historialCierres = [];
   Map<String, dynamic>? _estadisticas;
   bool _yaSeHizoCierreHoy = false;
+  Map<String, dynamic>? _totalesDelDia;
+  double _tasaUsd = 1.0;
+  bool _selectedQuick = false;
 
   final _currencyFormat = NumberFormat.currency(
     locale: 'es_VE',
@@ -48,13 +52,19 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
         DbHelper.instance.obtenerCierresLote(limit: 10),
         DbHelper.instance.obtenerEstadisticasCierres(),
         DbHelper.instance.yaSeHizoCierreHoy(),
+        DbHelper.instance.obtenerTotalesDelDia(),
       ]);
-      
+
+      final prefs = await SharedPreferences.getInstance();
+      final tasaGuardada = prefs.getDouble('tasa_usd') ?? 1.0;
+
       setState(() {
         _ultimoCierre = futures[0] as Map<String, dynamic>?;
         _historialCierres = futures[1] as List<Map<String, dynamic>>;
         _estadisticas = futures[2] as Map<String, dynamic>;
         _yaSeHizoCierreHoy = futures[3] as bool;
+        _totalesDelDia = futures[4] as Map<String, dynamic>;
+        _tasaUsd = tasaGuardada > 0 ? tasaGuardada : 1.0;
         _isLoading = false;
       });
       
@@ -74,74 +84,56 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
 
   /// Realizar el cierre de lote
   Future<void> _realizarCierre() async {
-    // Verificar si ya se hizo cierre hoy
     if (_yaSeHizoCierreHoy) {
       _mostrarAlerta('Ya se realizó el cierre de lote hoy');
       return;
     }
 
-    // Confirmar con el usuario
     final confirmar = await _mostrarDialogoConfirmacion();
     if (!confirmar) return;
 
     setState(() => _isProcessing = true);
 
     try {
-      debugPrint('🔒 Iniciando cierre de lote...');
-      
-      // Ejecutar cierre en Ubii POS
-      final resultado = await _ubiiService.cerrarLoteDelDia(quick: true);
+      debugPrint('🔒 Lanzando cierre de lote...');
+
+      final resultado = await _ubiiService.cerrarLoteDelDia(quick: _selectedQuick);
 
       if (resultado == null) {
-        await _mostrarError(
-          'No se recibió respuesta del POS Ubii',
-          detalles: 'Tipo: Liquidación inmediata (Q)',
-        );
+        await _mostrarError('No se pudo lanzar el cierre en Ubii POS');
         return;
       }
 
-      debugPrint('📊 Resultado del cierre: ${resultado['code']}');
-
-      if (resultado['code'] == '00') {
-        // ✅ Cierre exitoso - Registrar en BD
+      if (resultado['code'] == 'LAUNCHED') {
+        // Registrar cierre localmente con datos mínimos
         await DbHelper.instance.registrarCierreLote(
-          usuarioId: 1, 
-          tipoCierre: 'Q', // Liquidación inmediata
-          ubiiData: resultado,
+          usuarioId: 1,
+          tipoCierre: _selectedQuick ? 'Q' : 'N',
+          ubiiData: {
+            'code': '00',
+            'message': 'Cierre lanzado',
+            'terminal': '',
+            'lote': '',
+            'date': DateTime.now().toIso8601String(),
+            'time': '',
+          },
         );
 
-        // Guardar fecha de cierre
         await _ubiiService.guardarFechaCierre();
-
-        // Recargar datos
         await _cargarDatos();
 
-        // Mostrar diálogo de éxito
-        _mostrarDialogoExito(resultado);
-      } else if (resultado['code'] == 'CANCELLED') {
-        _mostrarAlerta('Cierre cancelado por el usuario');
-      } else if (resultado['code'] == 'ERROR') {
-        await _mostrarError(
-          'Error al realizar el cierre de lote',
-          detalles: 'Código: ${resultado['code']}\n'
-                   'Mensaje: ${resultado['message']}\n'
-                   'Terminal: ${resultado['terminal']}\n'
-                   'Lote: ${resultado['lote']}',
-        );
+        if (mounted) {
+          CustomSnackBar.success(context, 'Cierre enviado a Ubii — revisa el comprobante en el POS');
+        }
       } else {
         await _mostrarError(
-          'Error desconocido al realizar el cierre',
-          detalles: 'Código: ${resultado['code']}\n'
-                   'Mensaje: ${resultado['message']}\n'
-                   'Respuesta completa: $resultado',
+          'Error al lanzar el cierre',
+          detalles: 'Código: ${resultado['code']}\nMensaje: ${resultado['message']}',
         );
       }
     } catch (e) {
       debugPrint('❌ Error en cierre de lote: $e');
-      await _mostrarError(
-        'Ocurrió un error al procesar el cierre de lote',
-        detalles: 'Error: $e',
-      );
+      await _mostrarError('Ocurrió un error al procesar el cierre de lote', detalles: 'Error: $e');
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -149,119 +141,71 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
 
   /// Mostrar diálogo de confirmación
   Future<bool> _mostrarDialogoConfirmacion() async {
+    bool quickSelected = false; // false = N (diferido), true = Q (inmediato)
+
     return await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning, color: Colors.orange, size: 32),
-            SizedBox(width: 12),
-            Text('Confirmar Cierre'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '¿Estás seguro de realizar el cierre de lote?',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 12),
-            Text('• Se procesarán todas las transacciones del día'),
-            Text('• El dinero se enviará al banco esta noche'),
-            Text('• Esta acción NO se puede deshacer'),
-            Text('• Solo se puede hacer UNA VEZ al día'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning, color: Colors.orange, size: 32),
+              SizedBox(width: 12),
+              Text('Confirmar Cierre'),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-            ),
-            child: const Text(
-              'Confirmar Cierre',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    ) ?? false;
-  }
-
-  /// Mostrar diálogo de éxito
-  void _mostrarDialogoExito(Map<String, dynamic> resultado) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 32),
-            SizedBox(width: 12),
-            Text('Cierre Exitoso'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '✅ Cierre de lote realizado correctamente',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildDetailRow('Terminal:', resultado['terminal'] ?? 'N/A'),
-            _buildDetailRow('Lote:', resultado['lote'] ?? 'N/A'),
-            _buildDetailRow('Fecha:', resultado['fecha'] ?? 'N/A'),
-            _buildDetailRow('Hora:', resultado['hora'] ?? 'N/A'),
-            _buildDetailRow('Transacciones:', '${resultado['totalTransactions'] ?? 0}'),
-            _buildDetailRow('Monto Total:', _currencyFormat.format(double.tryParse(resultado['totalAmount']?.toString() ?? '0') ?? 0)),
-            const SizedBox(height: 16),
-            const Text(
-              '💰 El dinero estará disponible en 24-48 horas',
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '¿Estás seguro de realizar el cierre de lote?',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 20),
+              const Text(
+                'Tipo de liquidación:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              RadioListTile<bool>(
+                value: false,
+                groupValue: quickSelected,
+                onChanged: (v) => setDialogState(() => quickSelected = v!),
+                title: const Text('Diferida (N)'),
+                subtitle: const Text('Se procesa el siguiente día hábil'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              RadioListTile<bool>(
+                value: true,
+                groupValue: quickSelected,
+                onChanged: (v) => setDialogState(() => quickSelected = v!),
+                title: const Text('Inmediata (Q)'),
+                subtitle: const Text('El banco procesa esta misma noche'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text('Confirmar Cierre', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Aceptar'),
-          ),
-        ],
       ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
-      ),
-    );
+    ).then((confirmed) {
+      if (confirmed == true) {
+        _selectedQuick = quickSelected;
+      }
+      return confirmed ?? false;
+    });
   }
 
   Future<void> _mostrarError(String mensaje, {String? detalles}) async {
@@ -427,7 +371,9 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   Widget _buildUltimoCierreCard(bool isDark) {
     final cierre = _ultimoCierre!;
     final fecha = DateTime.parse(cierre['fecha_creacion']);
-    
+    final montoUsd = (cierre['monto_total'] as num?)?.toDouble() ?? 0.0;
+    final montoBs = montoUsd * _tasaUsd;
+
     return Card(
       color: isDark ? AppColors.darkCard : AppColors.lightCard,
       child: Padding(
@@ -437,10 +383,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.history,
-                  color: isDark ? AppColors.darkText : AppColors.primary,
-                ),
+                Icon(Icons.history, color: isDark ? AppColors.darkText : AppColors.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Último Cierre',
@@ -453,12 +396,11 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _buildInfoRow('Fecha:', _dateFormat.format(fecha), isDark),
-            _buildInfoRow('Lote:', cierre['ubii_lote'] ?? 'N/A', isDark),
-            _buildInfoRow('Terminal:', cierre['ubii_terminal'] ?? 'N/A', isDark),
-            _buildInfoRow('Transacciones:', '${cierre['total_transacciones'] ?? 0}', isDark),
-            _buildInfoRow('Monto:', _currencyFormat.format(cierre['monto_total'] ?? 0), isDark),
-            _buildInfoRow('Usuario:', cierre['usuario_nombre'] ?? 'N/A', isDark),
+            _buildInfoRow('Fecha', _dateFormat.format(fecha), isDark),
+            _buildInfoRow('Terminal', cierre['ubii_terminal'] ?? 'N/A', isDark),
+            _buildInfoRow('Transacciones', '${cierre['total_transacciones'] ?? 0}', isDark),
+            _buildInfoRow('Monto (Bs)', _currencyFormat.format(montoBs), isDark),
+            _buildInfoRow('Usuario', cierre['usuario_nombre'] ?? 'N/A', isDark),
           ],
         ),
       ),
@@ -467,7 +409,10 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
 
   Widget _buildEstadisticasCard(bool isDark) {
     final stats = _estadisticas!;
-    
+    final totales = _totalesDelDia;
+    final montoHoy = (totales?['total_usd'] as num?)?.toDouble() ?? 0.0;
+    final montoHoyBs = montoHoy * _tasaUsd;
+
     return Card(
       color: isDark ? AppColors.darkCard : AppColors.lightCard,
       child: Padding(
@@ -477,10 +422,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.analytics,
-                  color: isDark ? AppColors.darkText : AppColors.primary,
-                ),
+                Icon(Icons.analytics, color: isDark ? AppColors.darkText : AppColors.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Estadísticas Generales',
@@ -507,8 +449,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: _buildStatItem(
-                    'Monto Acumulado',
-                    _currencyFormat.format(stats['monto_total_acumulado'] ?? 0),
+                    'Monto total del día (Bs)',
+                    _currencyFormat.format(montoHoyBs),
                     Icons.attach_money,
                     Colors.green,
                     isDark,
@@ -651,7 +593,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                       ],
                     ),
                     trailing: Text(
-                      _currencyFormat.format(cierre['monto_total'] ?? 0),
+                      _currencyFormat.format(((cierre['monto_total'] as num?)?.toDouble() ?? 0.0) * _tasaUsd),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: isDark ? AppColors.darkText : AppColors.lightText,
@@ -668,20 +610,21 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
 
   Widget _buildInfoRow(String label, String value, bool isDark) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: 120,
             child: Text(
               label,
               style: TextStyle(
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
               ),
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,

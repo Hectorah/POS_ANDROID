@@ -346,16 +346,10 @@ class ExcelService {
           mensaje += '🆕 Nuevos: $productosImportados\n';
         }
         if (productosActualizados > 0) {
-          mensaje += '✏️ Actualizados: $productosActualizados\n';
-        }
-        if (filasOmitidas > 0) {
-          mensaje += '⚠️ Omitidos: $filasOmitidas';
+          mensaje += '✏️ Actualizados: $productosActualizados';
         }
       } else {
         mensaje = '⚠️ No se importaron productos';
-        if (filasOmitidas > 0) {
-          mensaje += '\n$filasOmitidas filas omitidas por errores';
-        }
       }
       
       return {
@@ -552,19 +546,14 @@ class ExcelService {
       if (productosImportados > 0 || productosActualizados > 0) {
         mensaje += '📦 PRODUCTOS:\n';
         if (productosImportados > 0) mensaje += '  🆕 Nuevos: $productosImportados\n';
-        if (productosActualizados > 0) mensaje += '  ✏️ Actualizados: $productosActualizados\n';
-        mensaje += '\n';
+        if (productosActualizados > 0) mensaje += '  ✏️ Actualizados: $productosActualizados';
       }
       
       if (clientesImportados > 0 || clientesActualizados > 0) {
+        if (productosImportados > 0 || productosActualizados > 0) mensaje += '\n\n';
         mensaje += '👥 CLIENTES:\n';
         if (clientesImportados > 0) mensaje += '  🆕 Nuevos: $clientesImportados\n';
-        if (clientesActualizados > 0) mensaje += '  ✏️ Actualizados: $clientesActualizados\n';
-        mensaje += '\n';
-      }
-      
-      if (filasOmitidas > 0) {
-        mensaje += '⚠️ Omitidos: $filasOmitidas';
+        if (clientesActualizados > 0) mensaje += '  ✏️ Actualizados: $clientesActualizados';
       }
     } else {
       mensaje = '⚠️ No se importaron datos\n\n'
@@ -669,19 +658,24 @@ class ExcelService {
     List<dynamic> row, 
     int tipoIndex
   ) async {
-    // TIPO, Identificacion, Nombre, Correo, Direccion, AgenteRetencion
-    if (row.length < tipoIndex + 3) return 'omitido';
+    // TIPO, Identificacion, Nombre, Direccion, Telefono, Correo, AgenteRetencion
+    if (row.length < tipoIndex + 4) return 'omitido';
     
     final identificacion = row[tipoIndex + 1].toString().trim();
     final nombre = row[tipoIndex + 2].toString().trim();
-    final correo = row.length > tipoIndex + 3 ? row[tipoIndex + 3].toString().trim() : '';
-    final direccion = row.length > tipoIndex + 4 ? row[tipoIndex + 4].toString().trim() : '';
-    final agenteRetencionStr = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim().toUpperCase() : '';
+    final direccion = row[tipoIndex + 3].toString().trim();
+    final telefono = row.length > tipoIndex + 4 ? row[tipoIndex + 4].toString().trim() : '';
+    final correo = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim() : '';
+    final agenteRetencionStr = row.length > tipoIndex + 6 ? row[tipoIndex + 6].toString().trim().toUpperCase() : '';
     final agenteRetencion = (agenteRetencionStr == 'SI' || agenteRetencionStr == 'SÍ' || agenteRetencionStr == '1' || agenteRetencionStr == 'TRUE') ? 1 : 0;
     
-    if (identificacion.isEmpty || nombre.isEmpty) return 'omitido';
+    // Validar campos obligatorios
+    if (identificacion.isEmpty || nombre.isEmpty || direccion.isEmpty) {
+      debugPrint('⚠️ Cliente omitido: ID="$identificacion" Nombre="$nombre" Dir="$direccion"');
+      return 'omitido';
+    }
     
-    debugPrint('👤 Cliente: $identificacion - $nombre (AR: ${agenteRetencion == 1 ? "Sí" : "No"})');
+    debugPrint('👤 Cliente: $identificacion - $nombre - Dir: $direccion - Tel: ${telefono.isEmpty ? "N/A" : telefono} (AR: ${agenteRetencion == 1 ? "Sí" : "No"})');
     
     final existingClient = await txn.query(
       'clientes',
@@ -695,8 +689,9 @@ class ExcelService {
         'clientes',
         {
           'nombre': nombre,
+          'direccion': direccion,
+          'telefono': telefono.isEmpty ? null : telefono,
           'correo': correo.isEmpty ? null : correo,
-          'direccion': direccion.isEmpty ? null : direccion,
           'agente_retencion': agenteRetencion,
         },
         where: 'identificacion = ?',
@@ -708,8 +703,9 @@ class ExcelService {
       await txn.insert('clientes', {
         'identificacion': identificacion,
         'nombre': nombre,
+        'direccion': direccion,
+        'telefono': telefono.isEmpty ? null : telefono,
         'correo': correo.isEmpty ? null : correo,
-        'direccion': direccion.isEmpty ? null : direccion,
         'agente_retencion': agenteRetencion,
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
@@ -854,16 +850,10 @@ class ExcelService {
           mensaje += '🆕 Nuevos: $productosImportados\n';
         }
         if (productosActualizados > 0) {
-          mensaje += '✏️ Actualizados: $productosActualizados\n';
-        }
-        if (filasOmitidas > 0) {
-          mensaje += '⚠️ Omitidos: $filasOmitidas';
+          mensaje += '✏️ Actualizados: $productosActualizados';
         }
       } else {
         mensaje = '⚠️ No se importaron productos';
-        if (filasOmitidas > 0) {
-          mensaje += '\n$filasOmitidas filas omitidas por errores';
-        }
       }
       
       return {

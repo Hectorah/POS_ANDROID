@@ -96,7 +96,7 @@ class DbHelper {
 
     return await openDatabase(
       path,
-      version: 8, // Actualizado a versión 8 para agregar tipo_impuesto a productos
+      version: 10, // [TEST] v10: campo estado en factura para simulación cierre Z
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -375,8 +375,9 @@ class DbHelper {
         id $idType,
         identificacion $textType UNIQUE,
         nombre $textType,
-        correo $textNull,
         direccion $textNull,
+        telefono $textNull,
+        correo $textNull,
         agente_retencion INTEGER DEFAULT 0,
         fecha_creacion $dateType
       )
@@ -408,6 +409,7 @@ class DbHelper {
         ubii_lote $textNull,
         ubii_response_code $textNull,
         ubii_response_message $textNull,
+        estado TEXT NOT NULL DEFAULT 'activo',
         FOREIGN KEY (cliente_id) REFERENCES clientes (id),
         FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
       )
@@ -476,8 +478,9 @@ class DbHelper {
     await db.insert('clientes', {
       'identificacion': 'V-00000000',
       'nombre': 'CLIENTE PRUEBA',
-      'correo': 'PRUEBA@GMAIL.COM',
       'direccion': 'PRUEBA',
+      'telefono': null,
+      'correo': 'PRUEBA@GMAIL.COM',
       'agente_retencion': 0,
       'fecha_creacion': DateTime.now().toIso8601String(),
     });
@@ -490,6 +493,35 @@ class DbHelper {
   // Método para futuras actualizaciones sin perder datos
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     debugPrint('🔄 Actualizando base de datos de v$oldVersion a v$newVersion');
+    
+    // [TEST] Migración v9 a v10: Agregar campo estado a factura (simulación cierre Z)
+    // TODO: REVERTIR - eliminar esta migración y el campo estado cuando ya no se necesite
+    if (oldVersion < 10) {
+      debugPrint('📝 [TEST] Agregando campo estado a tabla factura...');
+      try {
+        await db.execute(
+          "ALTER TABLE factura ADD COLUMN estado TEXT NOT NULL DEFAULT 'activo'",
+        );
+        debugPrint('✅ [TEST] Campo estado agregado (activo/cerrado)');
+      } catch (e) {
+        debugPrint('⚠️ [TEST] Error agregando campo estado: $e');
+      }
+    }
+
+    // Migración de versión 8 a 9: Agregar campo telefono a clientes
+    if (oldVersion < 9) {
+      debugPrint('📝 Agregando campo telefono a tabla clientes...');
+      
+      try {
+        // Agregar campo telefono
+        await db.execute('ALTER TABLE clientes ADD COLUMN telefono TEXT');
+        
+        debugPrint('✅ Campo telefono agregado exitosamente');
+        debugPrint('   - telefono: Número de teléfono del cliente (opcional)');
+      } catch (e) {
+        debugPrint('⚠️ Error agregando campo telefono: $e');
+      }
+    }
     
     // Migración de versión 7 a 8: Agregar campo tipo_impuesto a productos
     if (oldVersion < 8) {
@@ -996,6 +1028,17 @@ class DbHelper {
     });
   }
 
+  /// Actualizar un cliente existente
+  Future<int> actualizarCliente(int id, Map<String, dynamic> datos) async {
+    final db = await database;
+    return await db.update(
+      'clientes',
+      datos,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Obtener todos los clientes
   Future<List<Map<String, dynamic>>> obtenerClientes() async {
     final db = await database;
@@ -1122,6 +1165,26 @@ class DbHelper {
     return facturaId;
   }
 
+  // [TEST] Cierre Z simulado: marcar facturas del día como cerradas
+  // TODO: REVERTIR - eliminar este método cuando ya no se necesite
+  Future<int> cerrarFacturasDelDia() async {
+    final db = await database;
+    final hoy = DateTime.now();
+    final inicio = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
+    final fin = DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59).toIso8601String();
+
+    final count = await db.rawUpdate('''
+      UPDATE factura
+      SET estado = 'cerrado'
+      WHERE estado = 'activo'
+        AND fecha_creacion >= ?
+        AND fecha_creacion <= ?
+    ''', [inicio, fin]);
+
+    debugPrint('🔒 [TEST] Facturas cerradas del día: $count');
+    return count;
+  }
+
   /// Obtener facturas con filtros opcionales
   Future<List<Map<String, dynamic>>> obtenerFacturas({
     DateTime? desde,
@@ -1130,17 +1193,16 @@ class DbHelper {
   }) async {
     final db = await database;
     
-    String whereClause = '';
+    String whereClause = "f.estado = 'activo'";
     List<dynamic> whereArgs = [];
     
     if (desde != null) {
-      whereClause += 'f.fecha_creacion >= ?';
+      whereClause += ' AND f.fecha_creacion >= ?';
       whereArgs.add(desde.toIso8601String());
     }
     
     if (hasta != null) {
-      if (whereClause.isNotEmpty) whereClause += ' AND ';
-      whereClause += 'f.fecha_creacion <= ?';
+      whereClause += ' AND f.fecha_creacion <= ?';
       whereArgs.add(hasta.toIso8601String());
     }
     
@@ -1153,7 +1215,7 @@ class DbHelper {
       FROM factura f
       INNER JOIN clientes c ON f.cliente_id = c.id
       INNER JOIN usuarios u ON f.usuario_id = u.id
-      ${whereClause.isNotEmpty ? 'WHERE $whereClause' : ''}
+      WHERE $whereClause
       ORDER BY f.fecha_creacion DESC
       ${limit != null ? 'LIMIT $limit' : ''}
     ''', whereArgs);
@@ -1314,9 +1376,21 @@ class DbHelper {
     final db = await database;
     
     try {
-      // Convertir datos completos a JSON para almacenamiento
       final datosCompletos = ubiiData.toString();
-      
+
+      // Calcular totales reales desde las facturas locales del día
+      final totalesLocales = await obtenerTotalesDelDia();
+      final totalFacturasLocales = totalesLocales['total_facturas'] ?? 0;
+      final montoTotalLocal = (totalesLocales['total_usd'] as num?)?.toDouble() ?? 0.0;
+
+      // Usar valores locales si Ubii no devuelve datos confiables
+      final totalTransacciones = (ubiiData['totalTransactions'] != null && ubiiData['totalTransactions'] != 0)
+          ? ubiiData['totalTransactions']
+          : totalFacturasLocales;
+      final montoTotal = (ubiiData['totalAmount'] != null && ubiiData['totalAmount'] != 0)
+          ? (double.tryParse(ubiiData['totalAmount'].toString()) ?? montoTotalLocal)
+          : montoTotalLocal;
+
       final cierreId = await db.insert('cierres_lote', {
         'fecha_creacion': DateTime.now().toIso8601String(),
         'usuario_id': usuarioId,
@@ -1327,16 +1401,14 @@ class DbHelper {
         'ubii_lote': ubiiData['lote'],
         'ubii_fecha': ubiiData['date'],
         'ubii_hora': ubiiData['time'],
-        'total_transacciones': ubiiData['totalTransactions'] ?? 0,
-        'monto_total': ubiiData['totalAmount'] ?? 0.0,
+        'total_transacciones': totalTransacciones,
+        'monto_total': montoTotal,
         'datos_completos': datosCompletos,
       });
       
       debugPrint('✅ Cierre de lote registrado con ID: $cierreId');
-      debugPrint('   Usuario ID: $usuarioId');
-      debugPrint('   Tipo: $tipoCierre');
-      debugPrint('   Terminal: ${ubiiData['terminal']}');
-      debugPrint('   Lote: ${ubiiData['lote']}');
+      debugPrint('   Transacciones: $totalTransacciones');
+      debugPrint('   Monto total: $montoTotal');
       
       return cierreId;
     } catch (e) {
@@ -1426,6 +1498,37 @@ class DbHelper {
       'total_cierres': Sqflite.firstIntValue(totalCierres) ?? 0,
       'monto_total_acumulado': (montoTotal.first['total'] as double?) ?? 0.0,
       'ultimo_cierre': ultimoCierre,
+    };
+  }
+
+  /// Obtener totales de facturas activas del día actual
+  Future<Map<String, dynamic>> obtenerTotalesDelDia() async {
+    final db = await database;
+    final hoy = DateTime.now();
+    final inicio = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
+    final fin = DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59).toIso8601String();
+
+    final result = await db.rawQuery('''
+      SELECT
+        COUNT(*) as total_facturas,
+        COALESCE(SUM(total), 0) as total_usd,
+        COALESCE(SUM(monto_bs), 0) as total_bs,
+        COALESCE(SUM(base_imponible), 0) as base_imponible,
+        COALESCE(SUM(monto_iva), 0) as total_iva,
+        COALESCE(SUM(retencion_iva), 0) as total_retencion
+      FROM factura
+      WHERE estado = 'activo'
+        AND fecha_creacion >= ?
+        AND fecha_creacion <= ?
+    ''', [inicio, fin]);
+
+    return result.isNotEmpty ? result.first : {
+      'total_facturas': 0,
+      'total_usd': 0.0,
+      'total_bs': 0.0,
+      'base_imponible': 0.0,
+      'total_iva': 0.0,
+      'total_retencion': 0.0,
     };
   }
 }

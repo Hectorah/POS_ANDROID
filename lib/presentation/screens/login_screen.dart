@@ -719,15 +719,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            title: Row(
+            title: const Row(
               children: [
                 Icon(
                   Icons.download,
                   color: AppColors.primary,
                   size: 20,
                 ),
-                const SizedBox(width: 8),
-                const Expanded(
+                 SizedBox(width: 8),
+                 Expanded(
                   child: Text(
                     'Descargar Respaldo',
                     style: TextStyle(fontSize: 16),
@@ -969,6 +969,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                         TextFormField(
                                           controller: _passwordController,
                                           obscureText: _obscurePassword,
+                                          textInputAction: TextInputAction.done,
                                           style: TextStyle(fontSize: isTablet ? 18 : 16),
                                           decoration: InputDecoration(
                                             labelText: 'Contraseña',
@@ -994,6 +995,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                               vertical: isTablet ? 20 : 16,
                                             ),
                                           ),
+                                          onFieldSubmitted: (_) {
+                                            if (!_isLoading) {
+                                              _handleLogin();
+                                            }
+                                          },
                                           validator: (value) {
                                             if (value == null || value.isEmpty) {
                                               return 'Contraseña requerida';

@@ -32,28 +32,14 @@ void main() async {
   debugPrint('🚀 Iniciando aplicación POS ANDROID...');
   
   try {
-    // Inicializar base de datos SQLite
+    // Inicializar base de datos SQLite (crítico - debe esperar)
     await DbHelper.initialize();
     
-    // Cargar configuración (tasas, URL, etc.)
+    // Cargar configuración (crítico - debe esperar)
     await ConfigService.loadConfig();
     
-    // Actualizar tasas de cambio si es necesario
-    final needsUpdate = await ExchangeRateService.needsUpdate();
-    if (needsUpdate) {
-      debugPrint('🔄 Actualizando tasas de cambio...');
-      final updated = await ExchangeRateService.updateRates();
-      if (updated) {
-        // Recargar configuración con las nuevas tasas
-        await ConfigService.loadConfig();
-      }
-    } else {
-      final lastUpdate = await ExchangeRateService.getLastUpdateDate();
-      if (lastUpdate != null) {
-        final hoursAgo = DateTime.now().difference(lastUpdate).inHours;
-        debugPrint('ℹ️ Tasas actualizadas hace $hoursAgo horas');
-      }
-    }
+    // Actualizar tasas de cambio en segundo plano (no crítico)
+    _updateRatesInBackground();
     
     debugPrint('✅ Inicialización completada');
   } catch (e) {
@@ -79,6 +65,32 @@ void main() async {
   );
 
   runApp(const MyApp());
+}
+
+/// Actualizar tasas de cambio en segundo plano sin bloquear el inicio
+void _updateRatesInBackground() {
+  Future.microtask(() async {
+    try {
+      final needsUpdate = await ExchangeRateService.needsUpdate();
+      if (needsUpdate) {
+        debugPrint('🔄 Actualizando tasas de cambio en segundo plano...');
+        final updated = await ExchangeRateService.updateRates();
+        if (updated) {
+          // Recargar configuración con las nuevas tasas
+          await ConfigService.loadConfig();
+          debugPrint('✅ Tasas actualizadas en segundo plano');
+        }
+      } else {
+        final lastUpdate = await ExchangeRateService.getLastUpdateDate();
+        if (lastUpdate != null) {
+          final hoursAgo = DateTime.now().difference(lastUpdate).inHours;
+          debugPrint('ℹ️ Tasas actualizadas hace $hoursAgo horas');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error actualizando tasas en segundo plano: $e');
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {

@@ -221,6 +221,8 @@ class UbiiPosService {
   /// Realiza un cierre de lote (SETTLEMENT) en el POS Ubii.
   ///
   /// [quick]: `true` = Liquidación inmediata (Q), `false` = Siguiente día hábil (N).
+  /// Usa startActivity (sin esperar resultado) para que Ubii quede en primer plano
+  /// y pueda mostrar e imprimir el comprobante del cierre.
   Future<Map<String, dynamic>?> processSettlement({bool quick = true}) async {
     debugPrint('📊 Ubii POS: Iniciando cierre de lote');
     debugPrint('   Tipo: ${quick ? "Inmediato (Q)" : "Siguiente día (N)"}');
@@ -236,11 +238,7 @@ class UbiiPosService {
       }
       
       final Map<String, dynamic> response = Map<String, dynamic>.from(result);
-      
-      debugPrint('✅ Ubii POS: Cierre completado');
-      debugPrint('   Código: ${response['code']}');
-      debugPrint('   Mensaje: ${response['message']}');
-      
+      debugPrint('✅ Ubii POS: Settlement lanzado — ${response['code']}');
       return response;
       
     } on PlatformException catch (e) {
@@ -252,69 +250,20 @@ class UbiiPosService {
     }
   }
 
-  /// Método de alto nivel para realizar cierre de lote del día
-  /// 
-  /// Este método debe ejecutarse UNA SOLA VEZ al final del día (ej: 7:00 PM)
-  /// 
-  /// [quick]: true = Liquidación inmediata (Q) - El banco procesa esa misma noche
-  ///          false = Liquidación diferida (N) - Se procesa el siguiente día hábil
-  /// 
-  /// Retorna un Map con el resultado del cierre o null si hubo error
+  /// Método de alto nivel para realizar cierre de lote del día.
+  /// Usa startActivity (fire-and-forget) — Ubii procesa en background.
   Future<Map<String, dynamic>?> cerrarLoteDelDia({bool quick = true}) async {
-    debugPrint('📊 ========================================');
-    debugPrint('📊 INICIANDO CIERRE DE LOTE DEL DÍA');
-    debugPrint('📊 ========================================');
-    debugPrint('📊 Tipo: ${quick ? "Liquidación Inmediata (Q)" : "Liquidación Diferida (N)"}');
-    debugPrint('📊 Fecha: ${DateTime.now().toString()}');
-    
+    debugPrint('📊 Iniciando cierre de lote — tipo: ${quick ? "Q (inmediato)" : "N (diferido)"}');
     try {
-      // Ejecutar el cierre en el POS
       final resultado = await processSettlement(quick: quick);
-      
       if (resultado == null) {
-        debugPrint('❌ Error: No se recibió respuesta del POS');
-        debugPrint('   Verifica que el POS esté conectado y encendido');
+        debugPrint('❌ No se pudo lanzar el cierre en Ubii');
         return null;
       }
-      
-      debugPrint('📊 ========================================');
-      debugPrint('📊 RESULTADO DEL CIERRE');
-      debugPrint('📊 ========================================');
-      debugPrint('📊 Código: ${resultado['code']}');
-      debugPrint('📊 Mensaje: ${resultado['message']}');
-      
-      if (resultado['code'] == '00') {
-        // Cierre exitoso
-        debugPrint('✅ ========================================');
-        debugPrint('✅ CIERRE DE LOTE EXITOSO');
-        debugPrint('✅ ========================================');
-        debugPrint('✅ Terminal: ${resultado['terminal'] ?? 'N/A'}');
-        debugPrint('✅ Lote: ${resultado['lote'] ?? 'N/A'}');
-        debugPrint('✅ Fecha: ${resultado['date'] ?? 'N/A'}');
-        debugPrint('✅ Hora: ${resultado['time'] ?? 'N/A'}');
-        debugPrint('✅ Total Transacciones: ${resultado['totalTransactions'] ?? 'N/A'}');
-        debugPrint('✅ Monto Total: ${resultado['totalAmount'] ?? 'N/A'}');
-        debugPrint('✅ ========================================');
-        debugPrint('✅ El dinero está en camino al banco');
-        debugPrint('✅ El POS imprimirá el reporte automáticamente');
-        debugPrint('✅ ========================================');
-      } else if (resultado['code'] == 'CANCELLED') {
-        debugPrint('⚠️ Cierre cancelado por el usuario');
-      } else {
-        debugPrint('❌ Error en cierre de lote');
-        debugPrint('   Código: ${resultado['code']}');
-        debugPrint('   Mensaje: ${resultado['message']}');
-        debugPrint('   Revisa la conexión del POS');
-      }
-      
+      debugPrint('✅ Cierre lanzado — código: ${resultado['code']}');
       return resultado;
-      
     } catch (e) {
-      debugPrint('❌ ========================================');
-      debugPrint('❌ ERROR CRÍTICO EN CIERRE DE LOTE');
-      debugPrint('❌ ========================================');
-      debugPrint('❌ Error: $e');
-      debugPrint('❌ ========================================');
+      debugPrint('❌ Error en cierre de lote: $e');
       return null;
     }
   }

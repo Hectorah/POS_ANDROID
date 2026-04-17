@@ -68,10 +68,12 @@ class MainActivity: FlutterActivity() {
                 action = "com.ubiipagos.pos.views.activity.MainActivityView.launchFromOutside"
                 putExtra("TRANS_TYPE", "SETTLEMENT")
                 putExtra("SETTLE_TYPE", settleType)
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            
-            startActivityForResult(intent, UBII_REQUEST_CODE)
+            startActivity(intent)
+            // Notificar a Flutter que el intent fue lanzado exitosamente
+            pendingResult?.success(mapOf("code" to "LAUNCHED", "message" to "Settlement launched"))
+            pendingResult = null
         } catch (e: Exception) {
             pendingResult?.error("LAUNCH_ERROR", "Error launching Ubii settlement: ${e.message}", null)
             pendingResult = null

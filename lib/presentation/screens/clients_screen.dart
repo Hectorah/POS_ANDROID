@@ -576,9 +576,193 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   void _showEditClientDialog(ClientModel client, ResponsiveHelper responsive, ThemeData theme) {
-    CustomSnackBar.info(context, 'Función de edición en desarrollo');
-  }
+    bool isSaving = false;
+    final nameController = TextEditingController(text: client.nombre);
+    final emailController = TextEditingController(text: client.email);
+    final phoneController = TextEditingController(text: client.telefono);
+    final addressController = TextEditingController(text: client.direccion);
+    bool isRetentionAgent = client.agenteRetencion;
+    final formKey = GlobalKey<FormState>();
 
+    showDialog(
+      context: context,
+      barrierDismissible: !isSaving,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            width: double.maxFinite,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit, color: Colors.white, size: 28),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Editar Cliente',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                      if (!isSaving)
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                        ),
+                    ],
+                  ),
+                ),
+                // Form
+                Expanded(
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          // RIF (solo lectura — identificador del cliente)
+                          TextFormField(
+                            initialValue: client.fullRif,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'RIF/Cédula',
+                              prefixIcon: Icon(Icons.badge),
+                              helperText: 'El RIF no puede modificarse',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Nombre completo',
+                              prefixIcon: Icon(Icons.person),
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                            enabled: !isSaving,
+                            inputFormatters: [UpperCaseTextFormatter()],
+                            validator: (value) => Validators.validateRequired(value, 'El nombre'),
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: emailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icon(Icons.email),
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            enabled: !isSaving,
+                            validator: Validators.validateEmail,
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: phoneController,
+                            decoration: const InputDecoration(
+                              labelText: 'Teléfono',
+                              prefixIcon: Icon(Icons.phone),
+                              hintText: '0414-1234567',
+                            ),
+                            keyboardType: TextInputType.phone,
+                            enabled: !isSaving,
+                            inputFormatters: [PhoneInputFormatter()],
+                            validator: Validators.validatePhone,
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: addressController,
+                            decoration: const InputDecoration(
+                              labelText: 'Dirección',
+                              prefixIcon: Icon(Icons.location_on),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            maxLines: 3,
+                            enabled: !isSaving,
+                            validator: (value) => Validators.validateRequired(value, 'La dirección'),
+                          ),
+                          const SizedBox(height: 20),
+                          CheckboxListTile(
+                            title: const Text('Agente de Retención'),
+                            subtitle: const Text('Cliente sujeto a retención de IVA'),
+                            value: isRetentionAgent,
+                            enabled: !isSaving,
+                            onChanged: (value) => setDialogState(() => isRetentionAgent = value ?? false),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Actions
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: theme.brightness == Brightness.dark
+                            ? AppColors.darkBorder
+                            : AppColors.lightBorder,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (!isSaving)
+                        TextButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text('Cancelar', style: TextStyle(fontSize: 16)),
+                        ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: isSaving ? null : () async {
+                          if (formKey.currentState!.validate()) {
+                            setDialogState(() => isSaving = true);
+                            // Simular guardado (pantalla sin BD real)
+                            await Future.delayed(const Duration(milliseconds: 500));
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                              CustomSnackBar.success(dialogContext, 'Cliente actualizado');
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        ),
+                        child: isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Text('Guardar', style: TextStyle(fontSize: 16)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
   @override
   void dispose() {
     _searchController.dispose();
