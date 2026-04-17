@@ -8,6 +8,7 @@ import '../../services/exchange_rate_service.dart';
 import '../../models/pago_movil_transaction.dart';
 import '../widgets/custom_snackbar.dart';
 import 'pago_movil_screen.dart';
+import '../../models/app_models.dart';
 
 // Modelos locales simplificados (sin backend)
 class ClientModel {
@@ -64,8 +65,9 @@ class ProductModel {
   final String name;
   final double price;
   final double stock;
-  final String tipoImpuesto; // 'E' = Exento, 'G' = General (16%)
-  int quantity;
+  final String tipoImpuesto;
+  final UnidadMedida unidadMedida;
+  double quantity;
 
   ProductModel({
     required this.id,
@@ -73,11 +75,11 @@ class ProductModel {
     required this.name,
     required this.price,
     required this.stock,
-    this.tipoImpuesto = 'G', // Por defecto General
+    this.tipoImpuesto = 'G',
+    this.unidadMedida = UnidadMedida.und,
     this.quantity = 1,
   });
 
-  // Crear desde el mapa de la BD
   factory ProductModel.fromMap(Map<String, dynamic> map) {
     return ProductModel(
       id: map['id'].toString(),
@@ -86,6 +88,7 @@ class ProductModel {
       price: (map['precio'] as num?)?.toDouble() ?? 0.0,
       stock: (map['stock'] as num?)?.toDouble() ?? 0.0,
       tipoImpuesto: map['tipo_impuesto'] ?? 'G',
+      unidadMedida: UnidadMedidaExtension.fromString(map['unidad_medida']),
       quantity: 1,
     );
   }
@@ -551,27 +554,114 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     });
   }
 
-  /// Agregar producto al carrito
   void _addToCart(ProductModel product) {
-    // Verificar si ya está en el carrito
+    if (product.unidadMedida.esFraccionable) {
+      _showKgInputDialog(product);
+    } else {
+      _addToCartWithQuantity(product, 1.0);
+    }
+  }
+
+  void _showKgInputDialog(ProductModel product) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final qty = double.tryParse(controller.text.replaceAll(',', '.')) ?? 0.0;
+          final isValid = qty > 0 && qty <= product.stock;
+
+          return AlertDialog(
+            backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              product.name,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Stock disponible: ${product.stock} Kg',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,3}')),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'Peso (Kg)',
+                    hintText: 'Ej: 0.560',
+                    suffixText: 'Kg',
+                    filled: true,
+                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    errorText: controller.text.isNotEmpty && !isValid
+                        ? qty <= 0
+                            ? 'Ingresa un peso válido'
+                            : 'Supera el stock disponible'
+                        : null,
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: isValid
+                    ? () {
+                        Navigator.of(dialogContext).pop();
+                        _addToCartWithQuantity(
+                          product,
+                          double.parse(controller.text.replaceAll(',', '.')),
+                        );
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Agregar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _addToCartWithQuantity(ProductModel product, double quantity) {
     final existingIndex = _cart.indexWhere((item) => item.id == product.id);
-    
+
     if (existingIndex >= 0) {
-      // Ya existe, incrementar cantidad
       final existingItem = _cart[existingIndex];
-      
-      // Verificar stock disponible
-      if (existingItem.quantity + 1 > product.stock) {
-        _showSnackBar('Stock insuficiente. Disponible: ${product.stock.toInt()}', AppColors.warning, topPosition: true);
+      final newQty = double.parse(
+        (existingItem.quantity + quantity)
+            .toStringAsFixed(product.unidadMedida.decimalesPermitidos),
+      );
+
+      if (newQty > product.stock) {
+        _showSnackBar('Stock insuficiente. Disponible: ${product.stock}', AppColors.warning, topPosition: true);
         return;
       }
-      
-      setState(() {
-        existingItem.quantity++;
-      });
-      _showSnackBar('Producto agregado ✓', AppColors.success, topPosition: true);
+      setState(() => existingItem.quantity = newQty);
     } else {
-      // No existe, agregar nuevo
       setState(() {
         _cart.add(ProductModel(
           id: product.id,
@@ -580,13 +670,16 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           price: product.price,
           stock: product.stock,
           tipoImpuesto: product.tipoImpuesto,
-          quantity: 1,
+          unidadMedida: product.unidadMedida,
+          quantity: quantity,
         ));
       });
-      _showSnackBar('Producto agregado ✓', AppColors.success, topPosition: true);
     }
-    
-    Navigator.pop(context); // Cerrar el modal
+
+    _showSnackBar('Producto agregado ✓', AppColors.success, topPosition: true);
+    Navigator.pop(context);
+    _productSearchController.clear();
+    _searchProducts('');
   }
 
   // Cálculos según SENIAT
@@ -639,16 +732,19 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   // Métodos de UI simplificados
   void _updateQuantity(String id, int delta) {
     final item = _cart.firstWhere((item) => item.id == id);
-    final newQuantity = (item.quantity + delta).clamp(1, item.stock.toInt());
+    final step = item.unidadMedida.esFraccionable ? 0.1 : 1.0;
+    final newQuantity = (item.quantity + (delta * step));
+    final minQty = item.unidadMedida.esFraccionable ? 0.1 : 1.0;
 
-    // Verificar stock
+    if (newQuantity < minQty) return;
+
     if (newQuantity > item.stock) {
-      _showSnackBar('Stock insuficiente. Disponible: ${item.stock.toInt()}', AppColors.warning);
+      _showSnackBar('Stock insuficiente. Disponible: ${item.stock}', AppColors.warning);
       return;
     }
 
     setState(() {
-      item.quantity = newQuantity;
+      item.quantity = double.parse(newQuantity.toStringAsFixed(item.unidadMedida.decimalesPermitidos));
     });
   }
 
@@ -2331,7 +2427,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         constraints: const BoxConstraints(minWidth: 28),
                         alignment: Alignment.center,
                         child: Text(
-                          '${item.quantity}',
+                          '${item.unidadMedida.esFraccionable ? item.quantity.toStringAsFixed(3) : item.quantity.toInt()} ${item.unidadMedida.label}',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,

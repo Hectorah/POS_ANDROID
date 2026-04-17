@@ -96,7 +96,7 @@ class DbHelper {
 
     return await openDatabase(
       path,
-      version: 10, // [TEST] v10: campo estado en factura para simulación cierre Z
+      version: 11, // v11: campo unidad_medida en productos
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -353,6 +353,7 @@ class DbHelper {
         descripcion $textNull,
         precio $numType,
         tipo_impuesto TEXT NOT NULL DEFAULT 'G',
+        unidad_medida TEXT NOT NULL DEFAULT 'und',
         fecha_creacion $dateType
       )
     ''');
@@ -494,6 +495,19 @@ class DbHelper {
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     debugPrint('🔄 Actualizando base de datos de v$oldVersion a v$newVersion');
     
+    // Migración v10 a v11: Agregar campo unidad_medida a productos
+    if (oldVersion < 11) {
+      debugPrint('📝 Agregando campo unidad_medida a tabla productos...');
+      try {
+        await db.execute(
+          "ALTER TABLE productos ADD COLUMN unidad_medida TEXT NOT NULL DEFAULT 'und'",
+        );
+        debugPrint('✅ Campo unidad_medida agregado');
+      } catch (e) {
+        debugPrint('⚠️ Error agregando unidad_medida: $e');
+      }
+    }
+
     // [TEST] Migración v9 a v10: Agregar campo estado a factura (simulación cierre Z)
     // TODO: REVERTIR - eliminar esta migración y el campo estado cuando ya no se necesite
     if (oldVersion < 10) {
@@ -693,6 +707,7 @@ class DbHelper {
         p.nombre,
         p.precio,
         p.tipo_impuesto,
+        p.unidad_medida,
         e.stock,
         p.fecha_creacion
       FROM productos p
@@ -715,6 +730,7 @@ class DbHelper {
         p.nombre,
         p.precio,
         p.tipo_impuesto,
+        p.unidad_medida,
         e.stock
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
@@ -737,6 +753,7 @@ class DbHelper {
         p.nombre,
         p.precio,
         p.tipo_impuesto,
+        p.unidad_medida,
         e.stock
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
@@ -806,7 +823,8 @@ class DbHelper {
     required String nombre,
     required String descripcion,
     required double precio,
-    String tipoImpuesto = 'G', // Por defecto General (16%)
+    String tipoImpuesto = 'G',
+    String unidadMedida = 'und',
   }) async {
     final db = await database;
     
@@ -820,6 +838,7 @@ class DbHelper {
         'descripcion': descripcion.isEmpty ? null : descripcion,
         'precio': precio,
         'tipo_impuesto': tipoImpuesto,
+        'unidad_medida': unidadMedida,
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
       
@@ -915,6 +934,7 @@ class DbHelper {
     required double precio,
     required double stock,
     String tipoImpuesto = 'G',
+    String unidadMedida = 'und',
   }) async {
     final db = await database;
     
@@ -931,6 +951,7 @@ class DbHelper {
             'descripcion': descripcion.isEmpty ? null : descripcion,
             'precio': precio,
             'tipo_impuesto': tipoImpuesto,
+            'unidad_medida': unidadMedida,
           },
           where: 'id = ?',
           whereArgs: [productoId],

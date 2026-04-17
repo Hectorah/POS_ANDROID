@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../presentation/widgets/custom_snackbar.dart';
+import '../../models/app_models.dart';
 
 class CreateProductScreen extends StatefulWidget {
   final Map<String, dynamic>? product;
@@ -28,6 +29,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   
   // Tipo de impuesto
   String _tipoImpuesto = 'G'; // Por defecto General (16%)
+  // Unidad de medida
+  UnidadMedida _unidadMedida = UnidadMedida.und;
 
   @override
   void initState() {
@@ -44,8 +47,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _nombreController.text = product['nombre'] ?? '';
     _descripcionController.text = product['descripcion'] ?? '';
     _precioController.text = (product['precio'] as num?)?.toStringAsFixed(2) ?? '';
-    _stockController.text = (product['stock'] as num?)?.toStringAsFixed(0) ?? '';
+    _stockController.text = (product['stock'] as num?)?.toStringAsFixed(3).replaceAll(RegExp(r'\.?0+$'), '') ?? '';
     _tipoImpuesto = product['tipo_impuesto'] ?? 'G';
+    _unidadMedida = UnidadMedidaExtension.fromString(product['unidad_medida']);
   }
 
   @override
@@ -87,6 +91,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           precio: precio,
           stock: stock,
           tipoImpuesto: _tipoImpuesto,
+          unidadMedida: _unidadMedida.name,
         );
         
         if (!success) {
@@ -114,6 +119,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           descripcion: descripcion,
           precio: precio,
           tipoImpuesto: _tipoImpuesto,
+          unidadMedida: _unidadMedida.name,
         );
 
         // Crear existencia inicial
@@ -299,6 +305,10 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
               _buildTipoImpuestoSelector(isDark, isTablet),
               SizedBox(height: isTablet ? 16 : 12),
 
+              // Selector de unidad de medida
+              _buildUnidadMedidaSelector(isDark, isTablet),
+              SizedBox(height: isTablet ? 16 : 12),
+
               _buildTextField(
                 controller: _stockController,
                 label: 'Stock ${_isEditing ? 'Actual' : 'Inicial'}',
@@ -309,7 +319,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 isTablet: isTablet,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}')),
                 ],
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -507,6 +517,28 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildUnidadMedidaSelector(bool isDark, bool isTablet) {
+    return DropdownButtonFormField<UnidadMedida>(
+      value: _unidadMedida,
+      decoration: InputDecoration(
+        labelText: 'Unidad de Medida',
+        prefixIcon: const Icon(Icons.straighten),
+        filled: true,
+        fillColor: isDark ? AppColors.darkCard : Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: isTablet ? 20 : 16,
+          vertical: isTablet ? 18 : 16,
+        ),
+      ),
+      items: UnidadMedida.values.map((u) => DropdownMenuItem(
+        value: u,
+        child: Text(u.label),
+      )).toList(),
+      onChanged: (v) => setState(() => _unidadMedida = v ?? UnidadMedida.und),
     );
   }
 

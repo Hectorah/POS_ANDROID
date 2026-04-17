@@ -586,6 +586,7 @@ class ExcelService {
     final precioStr = row.length > tipoIndex + 5 ? row[tipoIndex + 5].toString().trim() : '0';
     final stockStr = row.length > tipoIndex + 6 ? row[tipoIndex + 6].toString().trim() : '0';
     final tipoImpuesto = row.length > tipoIndex + 7 ? row[tipoIndex + 7].toString().trim().toUpperCase() : 'G';
+    final unidadMedidaStr = row.length > tipoIndex + 8 ? row[tipoIndex + 8].toString().trim().toLowerCase() : 'und';
     
     if (codArt.isEmpty || nombre.isEmpty) return 'omitido';
     
@@ -614,6 +615,7 @@ class ExcelService {
           'descripcion': descripcion.isEmpty ? null : descripcion,
           'precio': precio,
           'tipo_impuesto': tipoImpuestoFinal,
+          'unidad_medida': (unidadMedidaStr == 'kg' || unidadMedidaStr == 'g' || unidadMedidaStr == 'pza') ? unidadMedidaStr : 'und',
         },
         where: 'id = ?',
         whereArgs: [productoId],
@@ -638,6 +640,7 @@ class ExcelService {
         'descripcion': descripcion.isEmpty ? null : descripcion,
         'precio': precio,
         'tipo_impuesto': tipoImpuestoFinal,
+        'unidad_medida': (unidadMedidaStr == 'kg' || unidadMedidaStr == 'g' || unidadMedidaStr == 'pza') ? unidadMedidaStr : 'und',
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
       

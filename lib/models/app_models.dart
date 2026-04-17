@@ -99,3 +99,33 @@ class Existencia {
     );
   }
 }
+
+// ============================================================================
+// UNIDADES DE MEDIDA
+// ============================================================================
+
+enum UnidadMedida { und, kg }
+
+extension UnidadMedidaExtension on UnidadMedida {
+  String get label {
+    switch (this) {
+      case UnidadMedida.und: return 'Und';
+      case UnidadMedida.kg:  return 'Kg';
+    }
+  }
+
+  bool get esFraccionable {
+    return this == UnidadMedida.kg;
+  }
+
+  int get decimalesPermitidos {
+    return esFraccionable ? 3 : 0;
+  }
+
+  static UnidadMedida fromString(String? value) {
+    switch (value?.toLowerCase()) {
+      case 'kg': return UnidadMedida.kg;
+      default:   return UnidadMedida.und;
+    }
+  }
+}

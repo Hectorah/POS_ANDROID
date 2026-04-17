@@ -4,6 +4,7 @@ import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import 'create_product_screen.dart';
 import 'create_document_screen.dart' show CurrencyFormatter;
+import '../../models/app_models.dart';
 
 class ProductsListScreen extends StatefulWidget {
   const ProductsListScreen({super.key});
@@ -479,6 +480,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
     final codBarras = product['cod_barras'] ?? 'Sin código';
     final precio = (product['precio'] as num?)?.toDouble() ?? 0.0;
     final stock = (product['stock'] as num?)?.toDouble() ?? 0.0;
+    final unidad = UnidadMedidaExtension.fromString(product['unidad_medida']);
 
     return Card(
       margin: EdgeInsets.only(bottom: isTablet ? 12 : 8),
@@ -605,7 +607,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Stock: ${stock.toStringAsFixed(0)}',
+                          'Stock: ${stock.toStringAsFixed(0)} ${unidad.label}',
                           style: TextStyle(
                             fontSize: isTablet ? 13 : 12,
                             fontWeight: FontWeight.w600,
