@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import '../core/app_config.dart';
+import '../sync/services/sync_trigger.dart';
 
 class DbHelper {
   // Patrón Singleton: Una única instancia para toda la app
@@ -96,7 +97,7 @@ class DbHelper {
 
     return await openDatabase(
       path,
-      version: 11, // v11: campo unidad_medida en productos
+      version: 13, // v13: índice único en existencias.producto_id para evitar duplicados
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -157,7 +158,7 @@ class DbHelper {
         SELECT numero_control 
         FROM factura 
         WHERE numero_control IS NOT NULL
-        ORDER BY id DESC 
+        ORDER BY CAST(SUBSTR(numero_control, INSTR(numero_control, '-') + 1) AS INTEGER) DESC
         LIMIT 1
       ''');
       
@@ -195,10 +196,31 @@ class DbHelper {
         debugPrint('   Solicite un nuevo rango al SENIAT pronto');
       }
       
-      // 5. Formatear y retornar
+      // 5. Verificar que el número generado no exista ya (defensa ante duplicados del pull)
+      bool existe = true;
+      while (existe) {
+        final check = await db.query(
+          'factura',
+          columns: ['id'],
+          where: 'numero_control = ?',
+          whereArgs: [_formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal)],
+          limit: 1,
+        );
+        if (check.isEmpty) {
+          existe = false;
+        } else {
+          debugPrint('⚠️ Número $siguienteNumero ya existe, incrementando...');
+          siguienteNumero++;
+          if (siguienteNumero > rangoMaximoFinal) {
+            throw Exception('Rango de números de control agotado.');
+          }
+        }
+      }
+
+      // 6. Formatear y retornar
       final numeroControl = _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal);
       debugPrint('✅ Número de control generado: $numeroControl');
-      
+
       return numeroControl;
       
     } catch (e) {
@@ -339,7 +361,10 @@ class DbHelper {
         usuario $textType UNIQUE,
         clave $textType,
         nivel $textType,
-        fecha_creacion $dateType
+        fecha_creacion $dateType,
+        server_id $textNull,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -354,6 +379,9 @@ class DbHelper {
         precio $numType,
         tipo_impuesto TEXT NOT NULL DEFAULT 'G',
         unidad_medida TEXT NOT NULL DEFAULT 'und',
+        server_id TEXT,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1,
         fecha_creacion $dateType
       )
     ''');
@@ -362,10 +390,13 @@ class DbHelper {
     await db.execute('''
       CREATE TABLE existencias (
         id $idType,
-        producto_id INTEGER NOT NULL,
+        producto_id INTEGER NOT NULL UNIQUE,
         cod_articulo $textType,
         stock $numType,
         ultima_actualizacion $dateType,
+        server_id $textNull,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE CASCADE
       )
     ''');
@@ -380,7 +411,10 @@ class DbHelper {
         telefono $textNull,
         correo $textNull,
         agente_retencion INTEGER DEFAULT 0,
-        fecha_creacion $dateType
+        fecha_creacion $dateType,
+        server_id $textNull,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -411,6 +445,9 @@ class DbHelper {
         ubii_response_code $textNull,
         ubii_response_message $textNull,
         estado TEXT NOT NULL DEFAULT 'activo',
+        server_id $textNull,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (cliente_id) REFERENCES clientes (id),
         FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
       )
@@ -425,6 +462,9 @@ class DbHelper {
         cantidad $numType,
         precio_unitario $numType,
         subtotal $numType,
+        server_id $textNull,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (factura_id) REFERENCES factura (id) ON DELETE CASCADE,
         FOREIGN KEY (producto_id) REFERENCES productos (id)
       )
@@ -446,6 +486,9 @@ class DbHelper {
         total_transacciones INTEGER DEFAULT 0,
         monto_total $numType,
         datos_completos $textNull,
+        server_id $textNull,
+        last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sync_status INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
       )
     ''');
@@ -494,7 +537,64 @@ class DbHelper {
   // Método para futuras actualizaciones sin perder datos
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     debugPrint('🔄 Actualizando base de datos de v$oldVersion a v$newVersion');
-    
+
+    // Migración v12 a v13: índice único en existencias.producto_id
+    // Elimina duplicados y previene que se vuelvan a crear.
+    if (oldVersion < 13) {
+      debugPrint('📝 Limpiando duplicados en existencias y creando índice único...');
+      try {
+        // 1. Eliminar filas duplicadas, conservando la de mayor stock
+        await db.execute('''
+          DELETE FROM existencias
+          WHERE id NOT IN (
+            SELECT MAX(id)
+            FROM existencias
+            GROUP BY producto_id
+          )
+        ''');
+
+        // 2. Crear índice único para prevenir futuros duplicados
+        await db.execute(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_existencias_producto_id ON existencias(producto_id)',
+        );
+        debugPrint('✅ Índice único creado en existencias.producto_id');
+      } catch (e) {
+        debugPrint('⚠️ Error en migración v13: $e');
+      }
+    }
+
+    // Migración v11 a v12: Campos de sincronización offline-first en TODAS las tablas.
+    // server_id  → UUID asignado por Supabase (null hasta la primera subida)
+    // last_modified → timestamp de última modificación local
+    // sync_status   → 0=synced, 1=pendingUpload, 2=pendingUpdate
+    if (oldVersion < 12) {
+      final tables = [
+        'productos',
+        'existencias',
+        'clientes',
+        'factura',
+        'factura_detalle',
+        'cierres_lote',
+        'usuarios',
+      ];
+      final now = DateTime.now().toIso8601String();
+      for (final table in tables) {
+        debugPrint('📝 Agregando campos sync a tabla $table...');
+        try {
+          await db.execute('ALTER TABLE $table ADD COLUMN server_id TEXT');
+          await db.execute(
+            "ALTER TABLE $table ADD COLUMN last_modified TEXT NOT NULL DEFAULT '$now'",
+          );
+          await db.execute(
+            'ALTER TABLE $table ADD COLUMN sync_status INTEGER NOT NULL DEFAULT 1',
+          );
+          debugPrint('✅ Campos sync agregados a $table');
+        } catch (e) {
+          debugPrint('⚠️ Error en $table (puede que ya existan): $e');
+        }
+      }
+    }
+
     // Migración v10 a v11: Agregar campo unidad_medida a productos
     if (oldVersion < 11) {
       debugPrint('📝 Agregando campo unidad_medida a tabla productos...');
@@ -708,10 +808,11 @@ class DbHelper {
         p.precio,
         p.tipo_impuesto,
         p.unidad_medida,
-        e.stock,
+        COALESCE(e.stock, 0.0) as stock,
         p.fecha_creacion
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
+      GROUP BY p.id
       ORDER BY p.nombre ASC
       ${limit != null ? 'LIMIT $limit' : ''}
       ${offset != null ? 'OFFSET $offset' : ''}
@@ -731,12 +832,13 @@ class DbHelper {
         p.precio,
         p.tipo_impuesto,
         p.unidad_medida,
-        e.stock
+        COALESCE(e.stock, 0.0) as stock
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
       WHERE p.cod_articulo LIKE ? 
          OR p.cod_barras LIKE ? 
          OR p.nombre LIKE ?
+      GROUP BY p.id
       ORDER BY p.nombre ASC
       LIMIT 50
     ''', [searchTerm, searchTerm, searchTerm]);
@@ -754,10 +856,11 @@ class DbHelper {
         p.precio,
         p.tipo_impuesto,
         p.unidad_medida,
-        e.stock
+        COALESCE(e.stock, 0.0) as stock
       FROM productos p
       LEFT JOIN existencias e ON p.id = e.producto_id
       WHERE p.cod_articulo = ? OR p.cod_barras = ?
+      GROUP BY p.id
       LIMIT 1
     ''', [codigo, codigo]);
     
@@ -844,6 +947,9 @@ class DbHelper {
       
       debugPrint('✅ Producto creado con ID: $productoId');
       debugPrint('   Tipo impuesto: ${tipoImpuesto == "E" ? "Exento" : "General 16%"}');
+      SyncTrigger.instance.onProductoCreado(productoId).catchError(
+        (e) => debugPrint('⚠️ Sync producto en background falló: $e'),
+      );
       return productoId;
     } catch (e) {
       debugPrint('❌ Error creando producto: $e');
@@ -970,6 +1076,12 @@ class DbHelper {
       });
       
       debugPrint('✅ Producto actualizado correctamente');
+      SyncTrigger.instance.onProductoActualizado(productoId).catchError(
+        (e) => debugPrint('⚠️ Sync producto actualizado falló: $e'),
+      );
+      SyncTrigger.instance.onExistenciaActualizada(productoId).catchError(
+        (e) => debugPrint('⚠️ Sync existencia actualizada falló: $e'),
+      );
       return true;
     } catch (e) {
       debugPrint('❌ Error actualizando producto: $e');
@@ -1006,6 +1118,13 @@ class DbHelper {
       }
       
       // Si no está en facturas, proceder a eliminar
+      // Obtener cod_articulo antes de eliminar (para sync)
+      final productoRows = await db.query('productos',
+          columns: ['cod_articulo'], where: 'id = ?', whereArgs: [productoId]);
+      final codArticulo = productoRows.isNotEmpty
+          ? productoRows.first['cod_articulo'] as String
+          : null;
+
       await db.transaction((txn) async {
         // Eliminar existencias primero
         await txn.delete(
@@ -1023,6 +1142,11 @@ class DbHelper {
       });
       
       debugPrint('✅ Producto eliminado correctamente');
+      if (codArticulo != null) {
+        SyncTrigger.instance.onProductoEliminado(codArticulo).catchError(
+          (e) => debugPrint('⚠️ Sync eliminación falló: $e'),
+        );
+      }
       return {
         'success': true,
         'message': 'Producto eliminado exitosamente',
@@ -1043,21 +1167,29 @@ class DbHelper {
   /// Insertar un nuevo cliente
   Future<int> insertarCliente(Map<String, dynamic> cliente) async {
     final db = await database;
-    return await db.insert('clientes', {
+    final id = await db.insert('clientes', {
       ...cliente,
       'fecha_creacion': DateTime.now().toIso8601String(),
     });
+    SyncTrigger.instance.onClienteCreado(id).catchError(
+      (e) => debugPrint('⚠️ Sync cliente creado falló: $e'),
+    );
+    return id;
   }
 
   /// Actualizar un cliente existente
   Future<int> actualizarCliente(int id, Map<String, dynamic> datos) async {
     final db = await database;
-    return await db.update(
+    final count = await db.update(
       'clientes',
       datos,
       where: 'id = ?',
       whereArgs: [id],
     );
+    SyncTrigger.instance.onClienteActualizado(id).catchError(
+      (e) => debugPrint('⚠️ Sync cliente actualizado falló: $e'),
+    );
+    return count;
   }
 
   /// Obtener todos los clientes
@@ -1124,14 +1256,18 @@ class DbHelper {
   }) async {
     final db = await database;
     int facturaId = 0;
-    
-    // IMPORTANTE: Generar número de control ANTES de la transacción
-    // para evitar deadlock (generarNumeroControl hace queries a la BD)
-    final numeroControlFinal = numeroControl ?? await generarNumeroControl();
-    
+
+    // Generar número de control con verificación de unicidad incorporada
+    // (generarNumeroControl ya salta números que existan por el pull)
+    String numeroControlFinal = numeroControl ?? await generarNumeroControl();
+
     debugPrint('📄 Creando factura con número de control: $numeroControlFinal');
-    
-    await db.transaction((txn) async {
+
+    // Retry: si por alguna condición de carrera el número ya existe, regenerar
+    int intentos = 0;
+    while (intentos < 5) {
+      try {
+        await db.transaction((txn) async {
       
       // Insertar cabecera de factura
       facturaId = await txn.insert('factura', {
@@ -1181,7 +1317,24 @@ class DbHelper {
           detalle['producto_id'],
         ]);
       }
-    });
+        }); // fin transaction
+        break; // éxito — salir del retry loop
+      } on DatabaseException catch (e) {
+        if (e.isUniqueConstraintError() && intentos < 4) {
+          intentos++;
+          debugPrint('⚠️ Número de control $numeroControlFinal ya existe, reintentando ($intentos/5)...');
+          numeroControlFinal = await generarNumeroControl();
+          debugPrint('🔢 Nuevo número de control: $numeroControlFinal');
+        } else {
+          rethrow;
+        }
+      }
+    }
+
+    // Sincronizar con Supabase en segundo plano (no bloquea la UI)
+    SyncTrigger.instance.onFacturaCreada(facturaId).catchError(
+      (e) => debugPrint('⚠️ Sync factura en background falló: $e'),
+    );
 
     return facturaId;
   }
@@ -1430,7 +1583,9 @@ class DbHelper {
       debugPrint('✅ Cierre de lote registrado con ID: $cierreId');
       debugPrint('   Transacciones: $totalTransacciones');
       debugPrint('   Monto total: $montoTotal');
-      
+      SyncTrigger.instance.onCierreLoteCreado(cierreId).catchError(
+        (e) => debugPrint('⚠️ Sync cierre lote falló: $e'),
+      );
       return cierreId;
     } catch (e) {
       debugPrint('❌ Error registrando cierre de lote: $e');

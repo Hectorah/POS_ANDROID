@@ -607,7 +607,7 @@ class _ProductsListScreenState extends State<ProductsListScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Stock: ${stock.toStringAsFixed(0)} ${unidad.label}',
+                          'Stock: ${stock % 1 == 0 ? stock.toInt() : stock} ${unidad.label}',
                           style: TextStyle(
                             fontSize: isTablet ? 13 : 12,
                             fontWeight: FontWeight.w600,

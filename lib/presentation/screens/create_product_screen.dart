@@ -4,6 +4,9 @@ import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../presentation/widgets/custom_snackbar.dart';
 import '../../models/app_models.dart';
+import '../../sync/repositories/productos_repository.dart';
+import '../../sync/repositories/existencias_repository.dart';
+import '../../sync/enums/sync_status.dart';
 
 class CreateProductScreen extends StatefulWidget {
   final Map<String, dynamic>? product;
@@ -80,9 +83,23 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
       final stock = double.parse(_stockController.text.trim());
 
       if (_isEditing) {
-        // Actualizar producto existente
+        // ── Actualizar producto existente ──────────────────────────────────
         final productoId = widget.product!['id'] as int;
-        
+
+        // Buscar el modelo sync actual para preservar server_id y syncStatus
+        final existing = await ProductosRepository.instance.getAllLocal()
+            .then((list) => list.where((p) => p.id == productoId).firstOrNull);
+
+        if (existing == null) throw Exception('Producto no encontrado');
+
+        final updated = existing.copyWithSyncFields(
+          lastModified: DateTime.now(),
+          syncStatus: existing.syncStatus == SyncStatus.synced
+              ? SyncStatus.pendingUpdate
+              : existing.syncStatus,
+        );
+
+        // Usamos DbHelper para actualizar también el stock (transacción)
         final success = await DbHelper.instance.actualizarProducto(
           productoId: productoId,
           codBarras: codBarras,
@@ -93,16 +110,33 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           tipoImpuesto: _tipoImpuesto,
           unidadMedida: _unidadMedida.name,
         );
-        
-        if (!success) {
-          throw Exception('No se pudo actualizar el producto');
+
+        if (!success) throw Exception('No se pudo actualizar el producto');
+
+        // Actualizar campos sync en la fila
+        await ProductosRepository.instance.updateSyncFields(
+          productoId,
+          serverId: updated.serverId,
+          syncStatus: updated.syncStatus,
+          lastModified: updated.lastModified,
+        );
+
+        // Marcar existencia como pendiente de actualización
+        final existencia = await ExistenciasRepository.instance.getByProductoId(productoId);
+        if (existencia != null) {
+          await ExistenciasRepository.instance.updateSyncFields(
+            existencia.id!,
+            serverId: existencia.serverId,
+            syncStatus: SyncStatus.pendingUpdate,
+            lastModified: DateTime.now(),
+          );
         }
-        
+
         debugPrint('✅ Producto actualizado con ID: $productoId');
       } else {
-        // Verificar si el código de artículo ya existe
+        // ── Crear nuevo producto ───────────────────────────────────────────
         final existingProduct = await DbHelper.instance.buscarProductoPorCodigo(codArticulo);
-        
+
         if (existingProduct != null) {
           if (mounted) {
             CustomSnackBar.error(context, 'Ya existe un producto con el código: $codArticulo');
@@ -111,24 +145,34 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           return;
         }
 
-        // Crear nuevo producto
-        final productoId = await DbHelper.instance.crearProducto(
+        // Guardar producto vía repositorio sync — saveWithId retorna el localId directamente
+        final nuevoProducto = ProductoSync(
           codArticulo: codArticulo,
-          codBarras: codBarras,
+          codBarras: codBarras.isEmpty ? null : codBarras,
           nombre: nombre,
-          descripcion: descripcion,
+          descripcion: descripcion.isEmpty ? null : descripcion,
           precio: precio,
           tipoImpuesto: _tipoImpuesto,
           unidadMedida: _unidadMedida.name,
+          lastModified: DateTime.now(),
+          syncStatus: SyncStatus.pendingUpload,
         );
 
-        // Crear existencia inicial
-        await DbHelper.instance.crearExistencia(
-          productoId: productoId,
-          cantidad: stock,
-        );
+        final result = await ProductosRepository.instance.saveWithId(nuevoProducto);
+        final localId = result.localId;
+        final savedProducto = result.model;
 
-        debugPrint('✅ Producto creado con ID: $productoId');
+        // Crear existencia usando el localId retornado directamente (sin race condition)
+        final nuevaExistencia = ExistenciaSync(
+          productoId: localId,
+          codArticulo: codArticulo,
+          stock: stock,
+          lastModified: DateTime.now(),
+          syncStatus: SyncStatus.pendingUpload,
+        );
+        await ExistenciasRepository.instance.save(nuevaExistencia);
+
+        debugPrint('✅ Producto creado id=$localId server=${savedProducto.serverId ?? "pendiente"}');
       }
 
       if (mounted) {

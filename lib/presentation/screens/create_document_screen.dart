@@ -587,7 +587,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Stock disponible: ${product.stock} Kg',
+                  'Stock disponible: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock} Kg',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
@@ -657,7 +657,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       );
 
       if (newQty > product.stock) {
-        _showSnackBar('Stock insuficiente. Disponible: ${product.stock}', AppColors.warning, topPosition: true);
+        _showSnackBar('Stock insuficiente. Disponible: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock}', AppColors.warning, topPosition: true);
         return;
       }
       setState(() => existingItem.quantity = newQty);
@@ -739,7 +739,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     if (newQuantity < minQty) return;
 
     if (newQuantity > item.stock) {
-      _showSnackBar('Stock insuficiente. Disponible: ${item.stock}', AppColors.warning);
+      _showSnackBar('Stock insuficiente. Disponible: ${item.stock % 1 == 0 ? item.stock.toInt() : item.stock}', AppColors.warning);
       return;
     }
 
@@ -2765,7 +2765,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                               borderRadius: BorderRadius.circular(4),
                                             ),
                                             child: Text(
-                                              'Stock: ${product.stock.toInt()}',
+                                              'Stock: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock}',
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,

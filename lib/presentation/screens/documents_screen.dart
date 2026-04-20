@@ -629,78 +629,81 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 ],
               ),
             )
-          : _isLoadingInvoices
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Cargando facturas...',
-                        style: TextStyle(
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : _invoices.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.description_outlined,
-                              size: 64,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No hay facturas',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? AppColors.darkText : AppColors.lightText,
+          : Column(
+              children: [
+                Expanded(
+                  child: _isLoadingInvoices
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Cargando facturas...',
+                                style: TextStyle(
+                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Crea tu primera factura para comenzar',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ],
+                          ),
+                        )
+                      : _invoices.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.description_outlined,
+                                      size: 64,
+                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'No hay facturas',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Crea tu primera factura para comenzar',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 32),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        await Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => const CreateDocumentScreen(),
+                                          ),
+                                        );
+                                        // Recargar facturas al volver
+                                        _loadInvoices();
+                                      },
+                                      icon: const Icon(Icons.add),
+                                      label: const Text('Crear Nueva Factura'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        foregroundColor: AppColors.textLight,
+                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 32),
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const CreateDocumentScreen(),
-                                  ),
-                                );
-                                // Recargar facturas al volver
-                                _loadInvoices();
-                              },
-                              icon: const Icon(Icons.add),
-                              label: const Text('Crear Nueva Factura'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: AppColors.textLight,
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadInvoices,
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _loadInvoices,
                       child: Column(
                         children: [
                           // Header con título y botón
@@ -766,6 +769,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         ],
                       ),
                     ),
+                ),  // cierre Expanded
+              ],
+            ),
     );
   }
 

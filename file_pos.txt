@@ -4,7 +4,7 @@ nombre de base de datos : POS_ANDROID
  
 password: *klkpos2026*
 
-API-key:  sb_publishable_luPtvnwopLYVmzST6obLpQ_JI52B-0e
+API-url:  nytrthjyljeppidffioz
 
 anonKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55dHJ0aGp5bGplcHBpZGZmaW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMzgyODgsImV4cCI6MjA5MTcxNDI4OH0.Nfh8uBOc6oPwtGrmY0K77bjLOLMM7b56u2gWJeBwXL4
 

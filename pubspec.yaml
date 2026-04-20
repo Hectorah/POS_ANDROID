@@ -13,6 +13,9 @@ dependencies:
   #SUPABASE
   supabase_flutter: ^2.12.2
 
+  # Conectividad (Offline-First)
+  connectivity_plus: ^6.1.4
+
   #intent 
   android_intent_plus: ^6.0.0
   

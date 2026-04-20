@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'providers/user_provider.dart';
@@ -10,6 +11,9 @@ import 'presentation/screens/documents_screen.dart';
 import 'database/db_helper.dart';
 import 'services/config_service.dart';
 import 'services/exchange_rate_service.dart';
+import 'sync/services/connectivity_service.dart';
+import 'sync/manager/sync_manager.dart';
+import 'sync/services/realtime_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +41,16 @@ void main() async {
     
     // Cargar configuración (crítico - debe esperar)
     await ConfigService.loadConfig();
+
+    // ── Offline-First: Supabase + Conectividad + SyncManager ──────────────
+    await Supabase.initialize(
+      url: dotenv.env['SUPABASE_URL'] ?? '',
+      anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+    );
+    await ConnectivityService.instance.initialize();
+    await SyncManager.instance.initialize();
+    await RealtimeSyncService.instance.initialize();
+    // ───────────────────────────────────────────────────────────────────────
     
     // Actualizar tasas de cambio en segundo plano (no crítico)
     _updateRatesInBackground();
