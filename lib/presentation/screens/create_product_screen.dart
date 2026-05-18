@@ -10,7 +10,7 @@ import '../../sync/enums/sync_status.dart';
 
 class CreateProductScreen extends StatefulWidget {
   final Map<String, dynamic>? product;
-  
+
   const CreateProductScreen({super.key, this.product});
 
   @override
@@ -29,7 +29,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
   final _descripcionController = TextEditingController();
   final _precioController = TextEditingController();
   final _stockController = TextEditingController();
-  
+
   // Tipo de impuesto
   String _tipoImpuesto = 'G'; // Por defecto General (16%)
   // Unidad de medida
@@ -49,8 +49,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     _codBarrasController.text = product['cod_barras'] ?? '';
     _nombreController.text = product['nombre'] ?? '';
     _descripcionController.text = product['descripcion'] ?? '';
-    _precioController.text = (product['precio'] as num?)?.toStringAsFixed(2) ?? '';
-    _stockController.text = (product['stock'] as num?)?.toStringAsFixed(3).replaceAll(RegExp(r'\.?0+$'), '') ?? '';
+    _precioController.text =
+        (product['precio'] as num?)?.toStringAsFixed(2) ?? '';
+    _stockController.text = (product['stock'] as num?)
+            ?.toStringAsFixed(3)
+            .replaceAll(RegExp(r'\.?0+$'), '') ??
+        '';
     _tipoImpuesto = product['tipo_impuesto'] ?? 'G';
     _unidadMedida = UnidadMedidaExtension.fromString(product['unidad_medida']);
   }
@@ -68,7 +72,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) {
-      CustomSnackBar.warning(context, 'Por favor completa todos los campos requeridos');
+      CustomSnackBar.warning(
+          context, 'Por favor completa todos los campos requeridos');
       return;
     }
 
@@ -87,7 +92,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         final productoId = widget.product!['id'] as int;
 
         // Buscar el modelo sync actual para preservar server_id y syncStatus
-        final existing = await ProductosRepository.instance.getAllLocal()
+        final existing = await ProductosRepository.instance
+            .getAllLocal()
             .then((list) => list.where((p) => p.id == productoId).firstOrNull);
 
         if (existing == null) throw Exception('Producto no encontrado');
@@ -122,7 +128,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         );
 
         // Marcar existencia como pendiente de actualización
-        final existencia = await ExistenciasRepository.instance.getByProductoId(productoId);
+        final existencia =
+            await ExistenciasRepository.instance.getByProductoId(productoId);
         if (existencia != null) {
           await ExistenciasRepository.instance.updateSyncFields(
             existencia.id!,
@@ -135,11 +142,13 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         debugPrint('✅ Producto actualizado con ID: $productoId');
       } else {
         // ── Crear nuevo producto ───────────────────────────────────────────
-        final existingProduct = await DbHelper.instance.buscarProductoPorCodigo(codArticulo);
+        final existingProduct =
+            await DbHelper.instance.buscarProductoPorCodigo(codArticulo);
 
         if (existingProduct != null) {
           if (mounted) {
-            CustomSnackBar.error(context, 'Ya existe un producto con el código: $codArticulo');
+            CustomSnackBar.error(
+                context, 'Ya existe un producto con el código: $codArticulo');
             setState(() => _isSaving = false);
           }
           return;
@@ -158,7 +167,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           syncStatus: SyncStatus.pendingUpload,
         );
 
-        final result = await ProductosRepository.instance.saveWithId(nuevoProducto);
+        final result =
+            await ProductosRepository.instance.saveWithId(nuevoProducto);
         final localId = result.localId;
         final savedProducto = result.model;
 
@@ -172,7 +182,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
         );
         await ExistenciasRepository.instance.save(nuevaExistencia);
 
-        debugPrint('✅ Producto creado id=$localId server=${savedProducto.serverId ?? "pendiente"}');
+        debugPrint(
+            '✅ Producto creado id=$localId server=${savedProducto.serverId ?? "pendiente"}');
       }
 
       if (mounted) {
@@ -194,7 +205,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
     final isTablet = size.width > 600;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         title: Text(_isEditing ? 'Editar Producto' : 'Registrar Producto'),
         backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
@@ -322,7 +334,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 isRequired: true,
                 isDark: isDark,
                 isTablet: isTablet,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
                 ],
@@ -361,7 +374,8 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                 isRequired: true,
                 isDark: isDark,
                 isTablet: isTablet,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}')),
                 ],
@@ -399,20 +413,21 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         side: BorderSide(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                         ),
                       ),
                       child: Text(
                         'Cancelar',
                         style: TextStyle(
                           fontSize: isTablet ? 18 : 16,
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                         ),
                       ),
                     ),
                   ),
                   SizedBox(width: isTablet ? 16 : 12),
-
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
@@ -423,15 +438,16 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
                               height: isTablet ? 20 : 18,
                               child: const CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : Icon(Icons.save, size: isTablet ? 24 : 20),
                       label: Text(
-                        _isSaving 
-                            ? 'Guardando...' 
-                            : _isEditing 
-                                ? 'Actualizar Producto' 
+                        _isSaving
+                            ? 'Guardando...'
+                            : _isEditing
+                                ? 'Actualizar Producto'
                                 : 'Guardar Producto',
                         style: TextStyle(
                           fontSize: isTablet ? 18 : 16,
@@ -503,7 +519,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             ],
           ),
           SizedBox(height: isTablet ? 12 : 8),
-          
+
           // Opción: General (16%)
           RadioListTile<String>(
             value: 'G',
@@ -530,9 +546,9 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
             activeColor: AppColors.primary,
             contentPadding: EdgeInsets.zero,
           ),
-          
+
           Divider(height: 1, color: Colors.grey[300]),
-          
+
           // Opción: Exento
           RadioListTile<String>(
             value: 'E',
@@ -566,7 +582,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
 
   Widget _buildUnidadMedidaSelector(bool isDark, bool isTablet) {
     return DropdownButtonFormField<UnidadMedida>(
-      value: _unidadMedida,
+      initialValue: _unidadMedida,
       decoration: InputDecoration(
         labelText: 'Unidad de Medida',
         prefixIcon: const Icon(Icons.straighten),
@@ -578,10 +594,12 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           vertical: isTablet ? 18 : 16,
         ),
       ),
-      items: UnidadMedida.values.map((u) => DropdownMenuItem(
-        value: u,
-        child: Text(u.label),
-      )).toList(),
+      items: UnidadMedida.values
+          .map((u) => DropdownMenuItem(
+                value: u,
+                child: Text(u.label),
+              ))
+          .toList(),
       onChanged: (v) => setState(() => _unidadMedida = v ?? UnidadMedida.und),
     );
   }
@@ -613,7 +631,7 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         filled: true,
-        fillColor: enabled 
+        fillColor: enabled
             ? (isDark ? AppColors.darkCard : Colors.white)
             : (isDark ? AppColors.darkBackground : Colors.grey[200]),
         contentPadding: EdgeInsets.symmetric(

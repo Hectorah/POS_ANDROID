@@ -85,6 +85,9 @@ void main() async {
 void _updateRatesInBackground() {
   Future.microtask(() async {
     try {
+      // Mostrar estado actual primero
+      await ExchangeRateService.showCurrentStatus();
+      
       final needsUpdate = await ExchangeRateService.needsUpdate();
       if (needsUpdate) {
         debugPrint('🔄 Actualizando tasas de cambio en segundo plano...');
@@ -92,17 +95,30 @@ void _updateRatesInBackground() {
         if (updated) {
           // Recargar configuración con las nuevas tasas
           await ConfigService.loadConfig();
-          debugPrint('✅ Tasas actualizadas en segundo plano');
+          debugPrint('✅ Tasas actualizadas exitosamente en segundo plano');
+          
+          // Mostrar nuevo estado
+          await ExchangeRateService.showCurrentStatus();
+        } else {
+          debugPrint('⚠️ No se pudieron actualizar tasas, usando valores guardados');
+          // Aún así cargar configuración con valores existentes
+          await ConfigService.loadConfig();
         }
       } else {
-        final lastUpdate = await ExchangeRateService.getLastUpdateDate();
-        if (lastUpdate != null) {
-          final hoursAgo = DateTime.now().difference(lastUpdate).inHours;
-          debugPrint('ℹ️ Tasas actualizadas hace $hoursAgo horas');
-        }
+        // Cargar configuración con tasas actuales
+        await ConfigService.loadConfig();
+        debugPrint('ℹ️ Tasas ya están actualizadas, usando valores guardados');
       }
     } catch (e) {
-      debugPrint('⚠️ Error actualizando tasas en segundo plano: $e');
+      debugPrint('❌ Error crítico actualizando tasas: $e');
+      debugPrint('   Usando valores por defecto para continuar...');
+      
+      // En caso de error crítico, asegurar que haya valores por defecto
+      try {
+        await ConfigService.loadConfig();
+      } catch (e2) {
+        debugPrint('   Error cargando configuración: $e2');
+      }
     }
   });
 }

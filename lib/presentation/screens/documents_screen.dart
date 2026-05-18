@@ -6,7 +6,8 @@ import '../../core/theme/theme_provider.dart';
 import '../../database/db_helper.dart';
 import '../../providers/user_provider.dart';
 import '../../services/excel_service.dart';
-import 'create_document_screen.dart' show CreateDocumentScreen, CurrencyFormatter;
+import 'create_document_screen.dart'
+    show CreateDocumentScreen, CurrencyFormatter;
 import 'admin_cierre_lote_screen.dart';
 import 'products_list_screen.dart';
 
@@ -34,16 +35,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   Future<void> _loadInvoices() async {
     try {
       setState(() => _isLoadingInvoices = true);
-      
+
       final invoices = await DbHelper.instance.obtenerFacturas(limit: 10);
-      
+
       if (mounted) {
         setState(() {
           _invoices = invoices;
           _isLoadingInvoices = false;
         });
       }
-      
+
       debugPrint('✅ ${_invoices.length} facturas cargadas');
     } catch (e) {
       debugPrint('❌ Error cargando facturas: $e');
@@ -90,7 +91,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+              backgroundColor:
+                  isDark ? AppColors.darkCard : AppColors.lightCard,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -126,7 +128,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     'Parece que es tu primera vez aquí.',
                     style: TextStyle(
                       fontSize: 16,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -135,7 +139,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     '¿Deseas importar tu inventario desde Excel o prefieres empezar de cero?',
                     style: TextStyle(
                       fontSize: 14,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -149,7 +155,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           'Importando productos...',
                           style: TextStyle(
                             fontSize: 14,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                         ),
                       ],
@@ -165,16 +173,19 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           // Marcar que ya vio el modal
                           final prefs = await SharedPreferences.getInstance();
                           await prefs.setBool('has_seen_welcome', true);
-                          
+
                           if (context.mounted) {
                             Navigator.of(dialogContext).pop();
-                            _showSnackBar('Puedes importar productos más tarde desde el menú', AppColors.info);
+                            _showSnackBar(
+                                'Puedes importar productos más tarde desde el menú',
+                                AppColors.info);
                           }
                         },
                         icon: const Icon(Icons.edit_note_rounded),
                         label: const Text('Empezar de Cero'),
                         style: TextButton.styleFrom(
-                          foregroundColor: isDark ? AppColors.darkText : AppColors.lightText,
+                          foregroundColor:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -185,7 +196,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           setState(() => _isImporting = true);
 
                           // Llamar al servicio de importación
-                          final resultado = await ExcelService.importarProductos();
+                          final resultado =
+                              await ExcelService.importarProductos();
 
                           setDialogState(() => _isImporting = false);
                           setState(() => _isImporting = false);
@@ -197,7 +209,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
                             if (context.mounted) {
                               Navigator.of(dialogContext).pop();
-                              
+
                               // Mostrar diálogo de éxito con detalles
                               _showSuccessDialog(
                                 '${resultado['nuevos'] ?? 0}',
@@ -219,7 +231,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -307,7 +320,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.success,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -321,7 +335,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  Widget _buildStatRow(IconData icon, String label, String value, Color color, bool isDark) {
+  Widget _buildStatRow(
+      IconData icon, String label, String value, Color color, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -362,9 +377,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final themeProvider = Provider.of<ThemeProvider>(context);
     final userProvider = Provider.of<UserProvider>(context);
-    
+
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,7 +390,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               'Hola, ${userProvider.currentUser?.userName ?? 'Usuario'}',
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
               ),
             ),
           ],
@@ -437,7 +455,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Productos
               PopupMenuItem<String>(
                 value: 'productos',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Icon(
@@ -450,7 +469,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       child: Text(
                         'Productos',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                           fontSize: 14,
                         ),
                       ),
@@ -461,7 +481,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Cierre de Lote
               PopupMenuItem<String>(
                 value: 'cierre_lote',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Icon(
@@ -474,7 +495,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       child: Text(
                         'Cierre de Lote',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                           fontSize: 14,
                         ),
                       ),
@@ -485,7 +507,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Cierre X
               PopupMenuItem<String>(
                 value: 'cierre_x',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Icon(
@@ -498,7 +521,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       child: Text(
                         'Cierre X',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                           fontSize: 14,
                         ),
                       ),
@@ -509,10 +533,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Cierre Z
               PopupMenuItem<String>(
                 value: 'cierre_z',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.block,
                       color: AppColors.error,
                       size: 20,
@@ -522,7 +547,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       child: Text(
                         'Cierre Z',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                           fontSize: 14,
                         ),
                       ),
@@ -533,7 +559,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Importar productos
               PopupMenuItem<String>(
                 value: 'importar',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Icon(
@@ -546,7 +573,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       child: Text(
                         'Importar Productos',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                           fontSize: 14,
                         ),
                       ),
@@ -557,7 +585,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Cambiar tema
               PopupMenuItem<String>(
                 value: 'tema',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Icon(
@@ -574,7 +603,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             ? 'Modo Claro'
                             : 'Modo Oscuro',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                           fontSize: 14,
                         ),
                       ),
@@ -587,7 +617,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               // Cerrar sesión
               PopupMenuItem<String>(
                 value: 'logout',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     const Icon(
@@ -623,7 +654,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   Text(
                     'Verificando inventario...',
                     style: TextStyle(
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
                     ),
                   ),
                 ],
@@ -642,7 +675,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                               Text(
                                 'Cargando facturas...',
                                 style: TextStyle(
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
                                 ),
                               ),
                             ],
@@ -658,7 +693,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                     Icon(
                                       Icons.description_outlined,
                                       size: 64,
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      color: isDark
+                                          ? AppColors.darkTextSecondary
+                                          : AppColors.lightTextSecondary,
                                     ),
                                     const SizedBox(height: 16),
                                     Text(
@@ -666,7 +703,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                       style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.bold,
-                                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                                        color: isDark
+                                            ? AppColors.darkText
+                                            : AppColors.lightText,
                                       ),
                                     ),
                                     const SizedBox(height: 8),
@@ -674,7 +713,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                       'Crea tu primera factura para comenzar',
                                       style: TextStyle(
                                         fontSize: 14,
-                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                        color: isDark
+                                            ? AppColors.darkTextSecondary
+                                            : AppColors.lightTextSecondary,
                                       ),
                                       textAlign: TextAlign.center,
                                     ),
@@ -684,7 +725,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                         await Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                            builder: (context) => const CreateDocumentScreen(),
+                                            builder: (context) =>
+                                                const CreateDocumentScreen(),
                                           ),
                                         );
                                         // Recargar facturas al volver
@@ -695,7 +737,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: AppColors.primary,
                                         foregroundColor: AppColors.textLight,
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 24, vertical: 16),
                                       ),
                                     ),
                                   ],
@@ -704,72 +747,85 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             )
                           : RefreshIndicator(
                               onRefresh: _loadInvoices,
-                      child: Column(
-                        children: [
-                          // Header con título y botón
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Últimas Facturas',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDark ? AppColors.darkText : AppColors.lightText,
-                                      ),
+                              child: Column(
+                                children: [
+                                  // Header con título y botón
+                                  Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Últimas Facturas',
+                                              style: TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                                color: isDark
+                                                    ? AppColors.darkText
+                                                    : AppColors.lightText,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${_invoices.length} registros',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: isDark
+                                                    ? AppColors
+                                                        .darkTextSecondary
+                                                    : AppColors
+                                                        .lightTextSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        ElevatedButton.icon(
+                                          onPressed: () async {
+                                            await Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    const CreateDocumentScreen(),
+                                              ),
+                                            );
+                                            // Recargar facturas al volver
+                                            _loadInvoices();
+                                          },
+                                          icon: const Icon(Icons.add, size: 20),
+                                          label: const Text('Nueva'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor:
+                                                AppColors.textLight,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 12),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${_invoices.length} registros',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: () async {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => const CreateDocumentScreen(),
-                                      ),
-                                    );
-                                    // Recargar facturas al volver
-                                    _loadInvoices();
-                                  },
-                                  icon: const Icon(Icons.add, size: 20),
-                                  label: const Text('Nueva'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary,
-                                    foregroundColor: AppColors.textLight,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   ),
-                                ),
-                              ],
+                                  // Lista de facturas
+                                  Expanded(
+                                    child: ListView.builder(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16),
+                                      itemCount: _invoices.length,
+                                      itemBuilder: (context, index) {
+                                        final invoice = _invoices[index];
+                                        return _buildInvoiceCard(
+                                            invoice, isDark);
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          // Lista de facturas
-                          Expanded(
-                            child: ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: _invoices.length,
-                              itemBuilder: (context, index) {
-                                final invoice = _invoices[index];
-                                return _buildInvoiceCard(invoice, isDark);
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ),  // cierre Expanded
+                ), // cierre Expanded
               ],
             ),
     );
@@ -786,7 +842,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+              backgroundColor:
+                  isDark ? AppColors.darkCard : AppColors.lightCard,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -801,7 +858,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     child: Text(
                       'Importar Productos',
                       style: TextStyle(
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color:
+                            isDark ? AppColors.darkText : AppColors.lightText,
                         fontSize: 18,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -817,7 +875,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     Text(
                       'Selecciona un archivo Excel (.xlsx) o CSV (.csv) con tus productos.',
                       style: TextStyle(
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                         fontSize: 14,
                       ),
                     ),
@@ -848,7 +908,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                                    color: isDark
+                                        ? AppColors.darkText
+                                        : AppColors.lightText,
                                   ),
                                 ),
                               ),
@@ -863,7 +925,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             '• Columna E: Stock',
                             style: TextStyle(
                               fontSize: 11,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                               height: 1.5,
                             ),
                           ),
@@ -873,7 +937,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             style: TextStyle(
                               fontSize: 10,
                               fontStyle: FontStyle.italic,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                             ),
                           ),
                         ],
@@ -888,7 +954,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           'Importando...',
                           style: TextStyle(
                             fontSize: 14,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                         ),
                       ),
@@ -904,7 +972,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         child: Text(
                           'Cancelar',
                           style: TextStyle(
-                            color: isDark ? AppColors.darkText : AppColors.lightText,
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
                           ),
                         ),
                       ),
@@ -912,14 +982,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         onPressed: () async {
                           setDialogState(() => isImporting = true);
 
-                          final resultado = await ExcelService.importarProductos();
+                          final resultado =
+                              await ExcelService.importarProductos();
 
                           setDialogState(() => isImporting = false);
 
                           if (resultado['success']) {
                             if (context.mounted) {
                               Navigator.of(dialogContext).pop();
-                              
+
                               // Mostrar diálogo de éxito con detalles
                               _showSuccessDialog(
                                 '${resultado['nuevos'] ?? 0}',
@@ -956,7 +1027,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   void _showCierreXDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -972,8 +1043,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 color: AppColors.warning,
                 size: 20,
               ),
-               SizedBox(width: 8),
-               Expanded(
+              SizedBox(width: 8),
+              Expanded(
                 child: Text(
                   'Confirmar Cierre X',
                   style: TextStyle(fontSize: 16),
@@ -999,9 +1070,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                
+
                 // TODO: Aquí iría la lógica real del cierre X
-                
+
                 // Mostrar mensaje de éxito
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -1041,12 +1112,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         builder: (BuildContext ctx) {
           return AlertDialog(
             backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
                 Icon(Icons.block, color: AppColors.error, size: 20),
-                 SizedBox(width: 8),
-                 Expanded(
+                SizedBox(width: 8),
+                Expanded(
                   child: Text(
                     'Cierre de Lote Requerido',
                     style: TextStyle(fontSize: 16),
@@ -1065,7 +1137,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.error,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
                 child: const Text('Entendido'),
               ),
@@ -1084,15 +1157,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title:const Row(
+          title: const Row(
             children: [
               Icon(
                 Icons.warning_amber_rounded,
                 color: AppColors.error,
                 size: 20,
               ),
-               SizedBox(width: 8),
-               Expanded(
+              SizedBox(width: 8),
+              Expanded(
                 child: Text(
                   'Confirmar Cierre Z',
                   style: TextStyle(fontSize: 16),
@@ -1126,7 +1199,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('✅ Cierre Z realizado — $count factura(s) cerrada(s)'),
+                    content: Text(
+                        '✅ Cierre Z realizado — $count factura(s) cerrada(s)'),
                     backgroundColor: AppColors.success,
                     behavior: SnackBarBehavior.floating,
                     duration: const Duration(seconds: 3),
@@ -1150,7 +1224,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   void _showLogoutDialog(BuildContext context, UserProvider userProvider) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -1174,7 +1248,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           content: Text(
             '¿Estás seguro que deseas cerrar sesión?',
             style: TextStyle(
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           actions: [
@@ -1230,11 +1306,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final metodoPago = invoice['metodo_pago'] ?? 'cash';
     final total = invoice['total'] as double;
     final clienteIdentificacion = invoice['cliente_identificacion'] ?? 'N/A';
-    
+
     // Obtener referencia de Ubii si existe
     final ubiiReference = invoice['ubii_reference'] as String?;
     final referenciaPago = invoice['referencia_pago'] as String?;
-    
+
     // Determinar qué mostrar como título
     String titulo;
     if (ubiiReference != null && ubiiReference.isNotEmpty) {
@@ -1247,12 +1323,12 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       // Fallback: mostrar número de factura
       titulo = 'Factura #${invoice['id']}';
     }
-    
+
     // Icono según método de pago
     IconData paymentIcon;
     Color paymentColor;
     String paymentLabel;
-    
+
     switch (metodoPago) {
       case 'card':
         paymentIcon = Icons.credit_card;
@@ -1274,7 +1350,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         paymentColor = AppColors.success;
         paymentLabel = 'Efectivo';
     }
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -1298,7 +1374,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       children: [
                         // Referencia con diseño especial (más pequeña)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: AppColors.info.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
@@ -1306,7 +1383,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.verified, size: 12, color: AppColors.info),
+                              const Icon(Icons.verified,
+                                  size: 12, color: AppColors.info),
                               const SizedBox(width: 4),
                               Text(
                                 titulo,
@@ -1325,7 +1403,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             Icon(
                               Icons.badge_outlined,
                               size: 14,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -1333,7 +1413,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                color: isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary,
                               ),
                             ),
                           ],
@@ -1342,7 +1424,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: paymentColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -1373,7 +1456,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        CurrencyFormatter.formatBS(total, invoice['tasa_usd'] ?? 36.50),
+                        CurrencyFormatter.formatBS(
+                            total, invoice['tasa_usd'] ?? 36.50),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -1384,7 +1468,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         CurrencyFormatter.formatUSD(total),
                         style: TextStyle(
                           fontSize: 13,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ],
@@ -1396,14 +1482,18 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         '${fecha.day}/${fecha.month}/${fecha.year}',
                         style: TextStyle(
                           fontSize: 13,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                       Text(
                         '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ],
@@ -1420,14 +1510,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   /// Mostrar detalle de factura
   void _showInvoiceDetail(Map<String, dynamic> invoice) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // Cargar detalles de la factura
-    final detalles = await DbHelper.instance.obtenerDetallesFactura(invoice['id']);
-    
+    final detalles =
+        await DbHelper.instance.obtenerDetallesFactura(invoice['id']);
+
     if (!mounted) return;
-    
+
     final screenHeight = MediaQuery.of(context).size.height;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1444,8 +1535,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                color: isDark
+                    ? AppColors.darkBackground
+                    : AppColors.lightBackground,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1458,7 +1552,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1467,14 +1562,18 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                       Text(
                         invoice['cliente_nombre'] ?? 'Cliente',
                         style: TextStyle(
                           fontSize: 13,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ],
@@ -1497,59 +1596,88 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     _buildDetailSection(
                       'Información General',
                       [
-                        _buildDetailRow('Fecha', _formatDateTime(invoice['fecha_creacion']), isDark),
-                        _buildDetailRow('Cliente', invoice['cliente_nombre'] ?? 'N/A', isDark),
-                        _buildDetailRow('Método de Pago', _getPaymentMethodLabel(invoice['metodo_pago']), isDark),
-                        if (invoice['referencia_pago'] != null && invoice['referencia_pago'].toString().isNotEmpty)
-                          _buildDetailRow('Referencia Manual', invoice['referencia_pago'], isDark),
-                        if (invoice['ubii_reference'] != null && invoice['ubii_reference'].toString().isNotEmpty)
-                          _buildDetailRow('Referencia Ubii', invoice['ubii_reference'], isDark, highlight: true),
+                        _buildDetailRow('Fecha',
+                            _formatDateTime(invoice['fecha_creacion']), isDark),
+                        _buildDetailRow('Cliente',
+                            invoice['cliente_nombre'] ?? 'N/A', isDark),
+                        _buildDetailRow(
+                            'Método de Pago',
+                            _getPaymentMethodLabel(invoice['metodo_pago']),
+                            isDark),
+                        if (invoice['referencia_pago'] != null &&
+                            invoice['referencia_pago'].toString().isNotEmpty)
+                          _buildDetailRow('Referencia Manual',
+                              invoice['referencia_pago'], isDark),
+                        if (invoice['ubii_reference'] != null &&
+                            invoice['ubii_reference'].toString().isNotEmpty)
+                          _buildDetailRow('Referencia Ubii',
+                              invoice['ubii_reference'], isDark,
+                              highlight: true),
                       ],
                       isDark,
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Montos
                     _buildDetailSection(
                       'Montos',
                       [
-                        _buildDetailRow('Total USD', CurrencyFormatter.formatUSD(invoice['total']), isDark),
-                        _buildDetailRow('Total Bs', CurrencyFormatter.formatBS(invoice['total'], invoice['tasa_usd'] ?? 36.50), isDark),
-                        _buildDetailRow('Tasa USD', '${(invoice['tasa_usd'] ?? 36.50).toStringAsFixed(2)} Bs', isDark),
+                        _buildDetailRow(
+                            'Total USD',
+                            CurrencyFormatter.formatUSD(invoice['total']),
+                            isDark),
+                        _buildDetailRow(
+                            'Total Bs',
+                            CurrencyFormatter.formatBS(
+                                invoice['total'], invoice['tasa_usd'] ?? 36.50),
+                            isDark),
+                        _buildDetailRow(
+                            'Tasa USD',
+                            '${(invoice['tasa_usd'] ?? 36.50).toStringAsFixed(2)} Bs',
+                            isDark),
                       ],
                       isDark,
                     ),
-                    
+
                     // Datos de Ubii POS (si aplica)
-                    if (invoice['ubii_reference'] != null && invoice['ubii_reference'].toString().isNotEmpty) ...[
+                    if (invoice['ubii_reference'] != null &&
+                        invoice['ubii_reference'].toString().isNotEmpty) ...[
                       const SizedBox(height: 20),
                       _buildDetailSection(
                         'Datos de Ubii POS',
                         [
-                          _buildDetailRow('Referencia', invoice['ubii_reference'] ?? 'N/A', isDark),
-                          _buildDetailRow('Código Auth', invoice['ubii_auth_code'] ?? 'N/A', isDark),
-                          _buildDetailRow('Tipo Tarjeta', invoice['ubii_card_type'] ?? 'N/A', isDark),
-                          _buildDetailRow('Terminal', invoice['ubii_terminal'] ?? 'N/A', isDark),
-                          _buildDetailRow('Lote', invoice['ubii_lote'] ?? 'N/A', isDark),
-                          _buildDetailRow('Código Respuesta', invoice['ubii_response_code'] ?? 'N/A', isDark),
+                          _buildDetailRow('Referencia',
+                              invoice['ubii_reference'] ?? 'N/A', isDark),
+                          _buildDetailRow('Código Auth',
+                              invoice['ubii_auth_code'] ?? 'N/A', isDark),
+                          _buildDetailRow('Tipo Tarjeta',
+                              invoice['ubii_card_type'] ?? 'N/A', isDark),
+                          _buildDetailRow('Terminal',
+                              invoice['ubii_terminal'] ?? 'N/A', isDark),
+                          _buildDetailRow(
+                              'Lote', invoice['ubii_lote'] ?? 'N/A', isDark),
+                          _buildDetailRow('Código Respuesta',
+                              invoice['ubii_response_code'] ?? 'N/A', isDark),
                         ],
                         isDark,
                       ),
                     ],
-                    
+
                     const SizedBox(height: 20),
-                    
+
                     // Productos
                     Text(
                       'Productos',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color:
+                            isDark ? AppColors.darkText : AppColors.lightText,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ...detalles.map((detalle) => _buildProductItem(detalle, isDark)),
+                    ...detalles
+                        .map((detalle) => _buildProductItem(detalle, isDark)),
                   ],
                 ),
               ),
@@ -1576,7 +1704,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+            color:
+                isDark ? AppColors.darkBackground : AppColors.lightBackground,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
@@ -1590,7 +1719,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, bool isDark, {bool highlight = false}) {
+  Widget _buildDetailRow(String label, String value, bool isDark,
+      {bool highlight = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -1601,9 +1731,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
-              color: highlight 
-                  ? AppColors.primary 
-                  : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+              color: highlight
+                  ? AppColors.primary
+                  : (isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
             ),
           ),
           Flexible(
@@ -1612,8 +1744,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: highlight 
-                    ? AppColors.primary 
+                color: highlight
+                    ? AppColors.primary
                     : (isDark ? AppColors.darkText : AppColors.lightText),
               ),
               textAlign: TextAlign.right,
@@ -1656,7 +1788,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   'Cantidad: ${detalle['cantidad'].toInt()}',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
                 ),
               ],

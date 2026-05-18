@@ -38,10 +38,37 @@ class MainActivity: FlutterActivity() {
                         result.error("INVALID_ARGUMENTS", "Settle type is required", null)
                     }
                 }
+                "printLines" -> {
+                    val lines = call.argument<String>("lines")
+                    
+                    if (lines != null) {
+                        pendingResult = result
+                        launchUbiiPrinter(lines)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "Lines are required", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
             }
+        }
+    }
+
+    private fun launchUbiiPrinter(lines: String) {
+        try {
+            val intent = Intent().apply {
+                action = "com.ubiipagos.pos.views.activity.MainActivityView.launchFromOutside"
+                putExtra("TRANS_TYPE", "PRINTER")
+                putExtra("LINES", lines)
+                putExtra("LOGON", "NO")
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            
+            startActivityForResult(intent, UBII_REQUEST_CODE)
+        } catch (e: Exception) {
+            pendingResult?.error("LAUNCH_ERROR", "Error launching Ubii Printer: ${e.message}", null)
+            pendingResult = null
         }
     }
 

@@ -16,7 +16,7 @@ class AdminCierreLoteScreen extends StatefulWidget {
 
 class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   final UbiiPosService _ubiiService = UbiiPosService();
-  
+
   bool _isProcessing = false;
   bool _isLoading = true;
   Map<String, dynamic>? _ultimoCierre;
@@ -44,7 +44,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   /// Cargar todos los datos necesarios
   Future<void> _cargarDatos() async {
     setState(() => _isLoading = true);
-    
+
     try {
       // Cargar datos en paralelo
       final futures = await Future.wait([
@@ -67,7 +67,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
         _tasaUsd = tasaGuardada > 0 ? tasaGuardada : 1.0;
         _isLoading = false;
       });
-      
+
       debugPrint('✅ Datos de cierre cargados');
       debugPrint('   Último cierre: ${_ultimoCierre?['fecha_creacion']}');
       debugPrint('   Historial: ${_historialCierres.length} cierres');
@@ -97,7 +97,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
     try {
       debugPrint('🔒 Lanzando cierre de lote...');
 
-      final resultado = await _ubiiService.cerrarLoteDelDia(quick: _selectedQuick);
+      final resultado =
+          await _ubiiService.cerrarLoteDelDia(quick: _selectedQuick);
 
       if (resultado == null) {
         await _mostrarError('No se pudo lanzar el cierre en Ubii POS');
@@ -123,17 +124,20 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
         await _cargarDatos();
 
         if (mounted) {
-          CustomSnackBar.success(context, 'Cierre enviado a Ubii — revisa el comprobante en el POS');
+          CustomSnackBar.success(context,
+              'Cierre enviado a Ubii — revisa el comprobante en el POS');
         }
       } else {
         await _mostrarError(
           'Error al lanzar el cierre',
-          detalles: 'Código: ${resultado['code']}\nMensaje: ${resultado['message']}',
+          detalles:
+              'Código: ${resultado['code']}\nMensaje: ${resultado['message']}',
         );
       }
     } catch (e) {
       debugPrint('❌ Error en cierre de lote: $e');
-      await _mostrarError('Ocurrió un error al procesar el cierre de lote', detalles: 'Error: $e');
+      await _mostrarError('Ocurrió un error al procesar el cierre de lote',
+          detalles: 'Error: $e');
     } finally {
       setState(() => _isProcessing = false);
     }
@@ -195,7 +199,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Confirmar Cierre', style: TextStyle(color: Colors.white)),
+              child: const Text('Confirmar Cierre',
+                  style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -225,13 +230,14 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cierre de Lote'),
         backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
       ),
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -242,23 +248,23 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                   // Estado actual
                   _buildEstadoCard(isDark),
                   const SizedBox(height: 16),
-                  
+
                   // Botón principal
                   _buildBotonCierre(isDark),
                   const SizedBox(height: 24),
-                  
+
                   // Último cierre
                   if (_ultimoCierre != null) ...[
                     _buildUltimoCierreCard(isDark),
                     const SizedBox(height: 16),
                   ],
-                  
+
                   // Estadísticas
                   if (_estadisticas != null) ...[
                     _buildEstadisticasCard(isDark),
                     const SizedBox(height: 16),
                   ],
-                  
+
                   // Historial
                   _buildHistorialCard(isDark),
                 ],
@@ -272,7 +278,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
     final Color iconColor;
     final String estado;
     final String descripcion;
-    
+
     if (_yaSeHizoCierreHoy) {
       cardColor = Colors.green.shade50;
       iconColor = Colors.green;
@@ -280,7 +286,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
       descripcion = 'El cierre de lote ya fue realizado hoy';
     } else {
       final ahora = DateTime.now();
-      if (ahora.hour >= 19) { // Después de las 7 PM
+      if (ahora.hour >= 19) {
+        // Después de las 7 PM
         cardColor = Colors.orange.shade50;
         iconColor = Colors.orange;
         estado = 'Cierre Pendiente';
@@ -292,7 +299,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
         descripcion = 'Cierre disponible después de las 7:00 PM';
       }
     }
-    
+
     return Card(
       color: cardColor,
       child: Padding(
@@ -322,7 +329,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                     descripcion,
                     style: TextStyle(
                       fontSize: 14,
-                      color: iconColor.withValues(alpha:0.8),
+                      color: iconColor.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
@@ -336,7 +343,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
 
   Widget _buildBotonCierre(bool isDark) {
     final bool habilitado = !_yaSeHizoCierreHoy && !_isProcessing;
-    
+
     return ElevatedButton.icon(
       onPressed: habilitado ? _realizarCierre : null,
       icon: _isProcessing
@@ -383,7 +390,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.history, color: isDark ? AppColors.darkText : AppColors.primary),
+                Icon(Icons.history,
+                    color: isDark ? AppColors.darkText : AppColors.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Último Cierre',
@@ -398,8 +406,10 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
             const SizedBox(height: 12),
             _buildInfoRow('Fecha', _dateFormat.format(fecha), isDark),
             _buildInfoRow('Terminal', cierre['ubii_terminal'] ?? 'N/A', isDark),
-            _buildInfoRow('Transacciones', '${cierre['total_transacciones'] ?? 0}', isDark),
-            _buildInfoRow('Monto (Bs)', _currencyFormat.format(montoBs), isDark),
+            _buildInfoRow('Transacciones',
+                '${cierre['total_transacciones'] ?? 0}', isDark),
+            _buildInfoRow(
+                'Monto (Bs)', _currencyFormat.format(montoBs), isDark),
             _buildInfoRow('Usuario', cierre['usuario_nombre'] ?? 'N/A', isDark),
           ],
         ),
@@ -422,7 +432,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.analytics, color: isDark ? AppColors.darkText : AppColors.primary),
+                Icon(Icons.analytics,
+                    color: isDark ? AppColors.darkText : AppColors.primary),
                 const SizedBox(width: 8),
                 Text(
                   'Estadísticas Generales',
@@ -464,11 +475,12 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon, Color color, bool isDark) {
+  Widget _buildStatItem(
+      String label, String value, IconData icon, Color color, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -487,7 +499,9 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
             label,
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -531,13 +545,17 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                       Icon(
                         Icons.inbox,
                         size: 48,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No hay cierres registrados',
                         style: TextStyle(
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ],
@@ -556,11 +574,13 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                   final cierre = _historialCierres[index];
                   final fecha = DateTime.parse(cierre['fecha_creacion']);
                   final esExitoso = cierre['ubii_response_code'] == '00';
-                  
+
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: CircleAvatar(
-                      backgroundColor: esExitoso ? Colors.green.withValues(alpha:0.1) : Colors.red.withValues(alpha:0.1),
+                      backgroundColor: esExitoso
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.red.withValues(alpha: 0.1),
                       child: Icon(
                         esExitoso ? Icons.check : Icons.error,
                         color: esExitoso ? Colors.green : Colors.red,
@@ -571,7 +591,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                       'Lote ${cierre['ubii_lote'] ?? 'N/A'}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color:
+                            isDark ? AppColors.darkText : AppColors.lightText,
                       ),
                     ),
                     subtitle: Column(
@@ -580,23 +601,30 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                         Text(
                           _dateFormat.format(fecha),
                           style: TextStyle(
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                         ),
                         Text(
                           '${cierre['total_transacciones'] ?? 0} transacciones',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                         ),
                       ],
                     ),
                     trailing: Text(
-                      _currencyFormat.format(((cierre['monto_total'] as num?)?.toDouble() ?? 0.0) * _tasaUsd),
+                      _currencyFormat.format(
+                          ((cierre['monto_total'] as num?)?.toDouble() ?? 0.0) *
+                              _tasaUsd),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color:
+                            isDark ? AppColors.darkText : AppColors.lightText,
                       ),
                     ),
                   );
@@ -620,7 +648,9 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
               ),
             ),
           ),

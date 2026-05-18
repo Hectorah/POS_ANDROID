@@ -6,7 +6,7 @@ import '../../core/app_config.dart';
 import '../widgets/custom_snackbar.dart';
 
 /// Pantalla para VERIFICAR pagos mediante Pago Móvil con Ubii
-/// 
+///
 /// Flujo:
 /// 1. Cliente realiza Pago Móvil desde su app bancaria
 /// 2. Cliente proporciona la referencia del pago
@@ -14,7 +14,7 @@ import '../widgets/custom_snackbar.dart';
 /// 4. Sistema verifica con Ubii si el pago es válido
 class PagoMovilScreen extends StatefulWidget {
   final double? montoInicial;
-  
+
   const PagoMovilScreen({
     super.key,
     this.montoInicial,
@@ -27,18 +27,18 @@ class PagoMovilScreen extends StatefulWidget {
 class _PagoMovilScreenState extends State<PagoMovilScreen> {
   final _formKey = GlobalKey<FormState>();
   final _service = UbiiPagoMovilService();
-  
+
   // Controladores de texto
   final _montoController = TextEditingController();
   final _phoneClienteController = TextEditingController();
   final _referenciaController = TextEditingController();
-  
+
   // Estado
   bool _loading = false;
   bool _serviceInitialized = false;
   String? _selectedBankCode;
   PagoMovilTransaction? _verifiedTransaction;
-  
+
   final _currencyFormat = NumberFormat.currency(
     locale: 'es_VE',
     symbol: 'Bs. ',
@@ -65,20 +65,22 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
   /// Inicializa el servicio de Ubii Pago Móvil
   Future<void> _initService() async {
     setState(() => _loading = true);
-    
+
     try {
       final success = await _service.initialize();
-      
+
       if (success) {
         setState(() => _serviceInitialized = true);
         if (mounted) {
-          CustomSnackBar.success(context, 'Servicio inicializado correctamente');
+          CustomSnackBar.success(
+              context, 'Servicio inicializado correctamente');
         }
       } else {
         if (mounted) {
           await ErrorDialog.ubiiAuthError(
             context,
-            details: 'No se pudo inicializar el servicio de Pago Móvil.\nVerifica las credenciales de Ubii en la configuración.',
+            details:
+                'No se pudo inicializar el servicio de Pago Móvil.\nVerifica las credenciales de Ubii en la configuración.',
           );
         }
       }
@@ -101,20 +103,20 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    
+
     if (!_serviceInitialized) {
       CustomSnackBar.warning(context, 'El servicio no está inicializado');
       return;
     }
-    
+
     setState(() => _loading = true);
-    
+
     try {
       // Generar número de orden único
       final orderNumber = _service.generateOrderNumber();
       final monto = double.parse(_montoController.text);
       final fecha = _service.getCurrentDate(); // Fecha actual automática
-      
+
       // Verificar el pago con Ubii
       final result = await _service.verificarPagoMovil(
         bankAba: _selectedBankCode!,
@@ -124,7 +126,7 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
         referencia: _referenciaController.text,
         orderNumber: orderNumber,
       );
-      
+
       if (result != null) {
         if (result['R'] == '0' && result['codR'] == '00') {
           // ✅ Pago verificado correctamente
@@ -140,21 +142,21 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
             responseCode: result['codR'],
             responseMessage: result['codS'],
           );
-          
+
           setState(() {});
-          
+
           if (mounted) {
             CustomSnackBar.success(
               context,
               'Pago verificado! Ref: ${_verifiedTransaction!.referencia}',
             );
           }
-          
+
           _mostrarDialogoExito();
         } else {
           // ❌ Pago no verificado
           final errorMsg = result['codS'] ?? 'Pago no encontrado o inválido';
-          
+
           setState(() {
             _verifiedTransaction = PagoMovilTransaction(
               orderNumber: orderNumber,
@@ -170,15 +172,15 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
               responseMessage: result['codS'],
             );
           });
-          
+
           if (mounted) {
             await ErrorDialog.pagoMovilError(
               context,
               details: 'Referencia: ${_referenciaController.text}\n'
-                      'Banco: $_selectedBankCode\n'
-                      'Monto: Bs. ${monto.toStringAsFixed(2)}\n'
-                      'Código: ${result['codR']}\n'
-                      'Mensaje: $errorMsg',
+                  'Banco: $_selectedBankCode\n'
+                  'Monto: Bs. ${monto.toStringAsFixed(2)}\n'
+                  'Código: ${result['codR']}\n'
+                  'Mensaje: $errorMsg',
             );
           }
         }
@@ -187,7 +189,7 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
           await ErrorDialog.networkError(
             context,
             details: 'No se recibió respuesta del servidor de Ubii.\n'
-                    'Verifica tu conexión a internet.',
+                'Verifica tu conexión a internet.',
           );
         }
       }
@@ -197,8 +199,8 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
           context,
           message: 'Ocurrió un error al verificar el Pago Móvil',
           details: 'Error: $e\n'
-                  'Referencia: ${_referenciaController.text}\n'
-                  'Banco: $_selectedBankCode',
+              'Referencia: ${_referenciaController.text}\n'
+              'Banco: $_selectedBankCode',
         );
       }
     } finally {
@@ -225,19 +227,28 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow('Monto:', _currencyFormat.format(_verifiedTransaction!.monto)),
+            _buildDetailRow(
+                'Monto:', _currencyFormat.format(_verifiedTransaction!.monto)),
             _buildDetailRow('Referencia:', _verifiedTransaction!.referencia),
             _buildDetailRow('Orden:', _verifiedTransaction!.orderNumber),
-            _buildDetailRow('Banco:', BancoVenezolano.findByCodigo(_verifiedTransaction!.bankAba)?.nombre ?? _verifiedTransaction!.bankAba),
+            _buildDetailRow(
+                'Banco:',
+                BancoVenezolano.findByCodigo(_verifiedTransaction!.bankAba)
+                        ?.nombre ??
+                    _verifiedTransaction!.bankAba),
             _buildDetailRow('Teléfono:', _verifiedTransaction!.phoneCliente),
-            _buildDetailRow('Fecha:', DateFormat('dd/MM/yyyy').format(_verifiedTransaction!.createdAt)),
+            _buildDetailRow(
+                'Fecha:',
+                DateFormat('dd/MM/yyyy')
+                    .format(_verifiedTransaction!.createdAt)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              Navigator.of(context).pop(_verifiedTransaction); // Retornar transacción
+              Navigator.of(context)
+                  .pop(_verifiedTransaction); // Retornar transacción
             },
             child: const Text('Aceptar'),
           ),
@@ -267,15 +278,15 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
     );
   }
 
-  void _showMessage(String message, {required bool isError}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
+  // void _showMessage(String message, {required bool isError}) {
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text(message),
+  //       backgroundColor: isError ? Colors.red : Colors.green,
+  //       duration: const Duration(seconds: 3),
+  //     ),
+  //   );
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -294,22 +305,30 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                   children: [
                     // Estado del servicio
                     Card(
-                      color: _serviceInitialized ? Colors.green.shade50 : Colors.red.shade50,
+                      color: _serviceInitialized
+                          ? Colors.green.shade50
+                          : Colors.red.shade50,
                       child: Padding(
                         padding: const EdgeInsets.all(12),
                         child: Row(
                           children: [
                             Icon(
-                              _serviceInitialized ? Icons.check_circle : Icons.error,
-                              color: _serviceInitialized ? Colors.green : Colors.red,
+                              _serviceInitialized
+                                  ? Icons.check_circle
+                                  : Icons.error,
+                              color: _serviceInitialized
+                                  ? Colors.green
+                                  : Colors.red,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _serviceInitialized 
-                                  ? 'Servicio activo' 
+                              _serviceInitialized
+                                  ? 'Servicio activo'
                                   : 'Servicio no disponible',
                               style: TextStyle(
-                                color: _serviceInitialized ? Colors.green.shade900 : Colors.red.shade900,
+                                color: _serviceInitialized
+                                    ? Colors.green.shade900
+                                    : Colors.red.shade900,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -317,9 +336,9 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                         ),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 20),
-                    
+
                     // Instrucciones
                     Card(
                       color: Colors.blue.shade50,
@@ -330,7 +349,8 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.info_outline, color: Colors.blue.shade700),
+                                Icon(Icons.info_outline,
+                                    color: Colors.blue.shade700),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Instrucciones',
@@ -356,9 +376,9 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                         ),
                       ),
                     ),
-                    
+
                     const SizedBox(height: 20),
-                    
+
                     // Estado de la verificación
                     if (_verifiedTransaction != null) ...[
                       Card(
@@ -385,15 +405,16 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                       ),
                       const SizedBox(height: 20),
                     ],
-                    
+
                     // Formulario
                     _buildDropdownBanco(),
                     const SizedBox(height: 16),
-                    
+
                     _buildTextField(
                       controller: _montoController,
                       label: 'Monto (Bs.)',
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       prefixIcon: Icons.attach_money,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -410,14 +431,15 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                           return 'Monto demasiado grande';
                         }
                         // Validar máximo 2 decimales
-                        if (value.contains('.') && value.split('.')[1].length > 2) {
+                        if (value.contains('.') &&
+                            value.split('.')[1].length > 2) {
                           return 'Máximo 2 decimales';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
-                    
+
                     _buildTextField(
                       controller: _phoneClienteController,
                       label: 'Teléfono Cliente (00584XXXXXXXXX)',
@@ -441,7 +463,7 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    
+
                     _buildTextField(
                       controller: _referenciaController,
                       label: 'Número de Referencia',
@@ -462,9 +484,9 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                         return null;
                       },
                     ),
-                    
+
                     const SizedBox(height: 24),
-                    
+
                     // Botón de verificación
                     ElevatedButton(
                       onPressed: (_loading || !_serviceInitialized)
@@ -483,7 +505,8 @@ class _PagoMovilScreenState extends State<PagoMovilScreen> {
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Text(

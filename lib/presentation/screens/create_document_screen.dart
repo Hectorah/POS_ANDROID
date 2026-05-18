@@ -5,6 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
 import '../../services/exchange_rate_service.dart';
+import '../../services/thermal_printer_service.dart';
 import '../../models/pago_movil_transaction.dart';
 import '../widgets/custom_snackbar.dart';
 import 'pago_movil_screen.dart';
@@ -1119,6 +1120,14 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             // Guardar factura en BD con datos de Ubii POS
             await _saveInvoice(ubiiData: resultado);
             
+            // 🖨️ Imprimir factura automáticamente en impresora térmica
+            await _printInvoiceAutomatically(
+              metodoPago: 'card',
+              referencia: resultado['reference'],
+              authCode: resultado['authCode'],
+              cardType: resultado['cardType'],
+            );
+            
             // Mostrar diálogo de éxito
             _showSuccessDialog(resultado);
             
@@ -1161,6 +1170,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           try {
             // Guardar factura sin datos de Ubii
             await _saveInvoice();
+            
+            // 🖨️ Imprimir factura automáticamente
+            await _printInvoiceAutomatically(metodoPago: 'card');
             
             // Mostrar diálogo de éxito
             _showSuccessDialog(null);
@@ -1263,6 +1275,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         // Guardar factura en BD
         await _saveInvoice();
         
+        // 🖨️ Imprimir factura automáticamente
+        await _printInvoiceAutomatically(metodoPago: _selectedPaymentMethod);
+        
         _showSuccessDialog(null);
         setState(() => _isProcessingPayment = false);
       } catch (e) {
@@ -1329,6 +1344,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 'banco': transaction.bankAba,
                 'telefono': transaction.phoneCliente,
               },
+            );
+            
+            // 🖨️ Imprimir factura automáticamente
+            await _printInvoiceAutomatically(
+              metodoPago: 'pago_movil',
+              referencia: transaction.referencia,
             );
             
             _showSuccessDialog(null);
@@ -1503,6 +1524,79 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // IMPRESIÓN AUTOMÁTICA DE FACTURA
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Imprime la factura actual en la impresora térmica del P14.
+  ///
+  /// Se invoca automáticamente después de cada pago aprobado.
+  /// Si la impresión falla, muestra un aviso pero NO interrumpe el flujo.
+  Future<void> _printInvoiceAutomatically({
+    String? metodoPago,
+    String? referencia,
+    String? authCode,
+    String? cardType,
+  }) async {
+    try {
+      debugPrint('🖨️ Iniciando impresión automática de factura...');
+
+      // Construir los items del carrito en el formato esperado por el servicio
+      final items = _cart.map((item) {
+        return {
+          'nombre': item.name,
+          'cantidad': item.quantity,
+          'precio_unitario': item.price,
+          'subtotal': item.price * item.quantity,
+        };
+      }).toList();
+
+      // Número de factura (timestamp si no hay otro identificador)
+      final invoiceNumber = 'FAC-${DateTime.now().millisecondsSinceEpoch}';
+
+      final success = await ThermalPrinterService.printInvoice(
+        invoiceNumber: invoiceNumber,
+        clientName: _selectedClient?.nombre ?? 'Cliente General',
+        clientRif: _selectedClient?.identificacion ?? 'N/A',
+        clientAddress: _selectedClient?.direccion,
+        items: items,
+        baseImponible: _baseImponible,
+        montoExento: _montoExento,
+        montoIva: _iva,
+        total: _total,
+        tasaCambio: _exchangeRate,
+        metodoPago: metodoPago,
+        referencia: referencia,
+        authCode: authCode,
+        cardType: cardType,
+      );
+
+      if (success) {
+        debugPrint('✅ Factura impresa correctamente');
+        if (mounted) {
+          _showSnackBar('🖨️ Factura impresa', AppColors.success, topPosition: true);
+        }
+      } else {
+        debugPrint('⚠️ La impresión no se completó');
+        if (mounted) {
+          _showSnackBar(
+            '⚠️ No se pudo imprimir la factura. Verifique la impresora.',
+            AppColors.warning,
+          );
+        }
+      }
+    } catch (e) {
+      // La impresión es un proceso secundario — NO debe bloquear la venta
+      debugPrint('❌ Error en impresión automática: $e');
+      if (mounted) {
+        _showSnackBar(
+          '⚠️ Error de impresión: la factura fue guardada correctamente.',
+          AppColors.warning,
+        );
+      }
+    }
+  }
+
   /// Limpiar todos los datos del formulario
   void _resetForm() {
     setState(() {
@@ -1628,246 +1722,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-  /// Mostrar diálogo cuando Ubii POS no retorna datos
-  void _showNoDataDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 32),
-              const SizedBox(width: 12),
-              Text(
-                'Verificar Transacción',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ubii POS no retornó datos de la transacción.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '¿Se imprimió el voucher en el POS?',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Si el voucher se imprimió, la transacción fue exitosa.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.info.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Nota: Este mensaje aparece porque Ubii POS no está retornando los datos correctamente. Contacta al desarrollador para configurar la integración.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                _showSnackBar('Transacción no procesada', AppColors.warning);
-              },
-              child: Text(
-                'No se imprimió',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
-                ),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                
-                // Guardar factura sin datos de Ubii
-                await _saveInvoice();
-                
-                _showSnackBar(
-                  'Factura guardada. Verifica el voucher del POS.',
-                  AppColors.success,
-                );
-                
-                _showSuccessDialog(null);
-              },
-              icon: const Icon(Icons.check),
-              label: const Text('Sí, se imprimió'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Mostrar diálogo con datos de debugging
-  void _showDebugDataDialog(Map<String, dynamic> data) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Convertir el mapa a texto legible
-    final dataText = data.entries
-        .map((e) => '${e.key}: ${e.value}')
-        .join('\n');
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.bug_report, color: AppColors.warning, size: 32),
-              const SizedBox(width: 12),
-              Text(
-                'Datos de Ubii POS',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Datos recibidos de Ubii POS:',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-                    ),
-                  ),
-                  child: SelectableText(
-                    dataText.isEmpty ? 'Sin datos' : dataText,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      color: isDark ? AppColors.darkText : AppColors.lightText,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '¿Se imprimió el voucher?',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.info.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Por favor, toma una captura de pantalla de estos datos y envíala al desarrollador para configurar la integración correctamente.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                _showSnackBar('Transacción no procesada', AppColors.warning);
-              },
-              child: Text(
-                'No se imprimió',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
-                ),
-              ),
-            ),
-            ElevatedButton.icon(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                
-                // Guardar factura sin datos de Ubii
-                await _saveInvoice();
-                
-                _showSnackBar(
-                  'Factura guardada',
-                  AppColors.success,
-                );
-                
-                _showSuccessDialog(null);
-              },
-              icon: const Icon(Icons.check),
-              label: const Text('Sí, guardar'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+
+
 
   Widget _buildInfoRow(String label, String value) {
     return Padding(
