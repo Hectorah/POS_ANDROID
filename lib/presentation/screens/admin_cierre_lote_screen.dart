@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
-import '../../database/db_helper.dart';
+import '../../DATABASE/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
 import '../widgets/custom_snackbar.dart';
 
@@ -23,7 +23,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   List<Map<String, dynamic>> _historialCierres = [];
   Map<String, dynamic>? _estadisticas;
   bool _yaSeHizoCierreHoy = false;
-  Map<String, dynamic>? _totalesDelDia;
+  Map<String, dynamic>? _totalesLoteActivo;
   double _tasaUsd = 1.0;
   bool _selectedQuick = false;
 
@@ -52,7 +52,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
         DbHelper.instance.obtenerCierresLote(limit: 10),
         DbHelper.instance.obtenerEstadisticasCierres(),
         DbHelper.instance.yaSeHizoCierreHoy(),
-        DbHelper.instance.obtenerTotalesDelDia(),
+        DbHelper.instance.obtenerTotalesLoteActivo(),
       ]);
 
       final prefs = await SharedPreferences.getInstance();
@@ -63,7 +63,7 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
         _historialCierres = futures[1] as List<Map<String, dynamic>>;
         _estadisticas = futures[2] as Map<String, dynamic>;
         _yaSeHizoCierreHoy = futures[3] as bool;
-        _totalesDelDia = futures[4] as Map<String, dynamic>;
+        _totalesLoteActivo = futures[4] as Map<String, dynamic>;
         _tasaUsd = tasaGuardada > 0 ? tasaGuardada : 1.0;
         _isLoading = false;
       });
@@ -342,7 +342,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
   }
 
   Widget _buildBotonCierre(bool isDark) {
-    final bool habilitado = !_yaSeHizoCierreHoy && !_isProcessing;
+    final totalPendientes = (_totalesLoteActivo?['total_facturas'] as num?)?.toInt() ?? 0;
+    final bool habilitado = (!_yaSeHizoCierreHoy || totalPendientes > 0) && !_isProcessing;
 
     return ElevatedButton.icon(
       onPressed: habilitado ? _realizarCierre : null,
@@ -356,9 +357,11 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
       label: Text(
         _isProcessing
             ? 'PROCESANDO CIERRE...'
-            : _yaSeHizoCierreHoy
-                ? 'CIERRE YA REALIZADO HOY'
-                : 'REALIZAR CIERRE DE LOTE',
+            : totalPendientes > 0
+                ? 'REALIZAR CIERRE DE LOTE ($totalPendientes PEND.)'
+                : _yaSeHizoCierreHoy
+                    ? 'CIERRE YA REALIZADO HOY'
+                    : 'REALIZAR CIERRE DE LOTE',
         style: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.bold,
@@ -419,9 +422,9 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
 
   Widget _buildEstadisticasCard(bool isDark) {
     final stats = _estadisticas!;
-    final totales = _totalesDelDia;
-    final montoHoy = (totales?['total_usd'] as num?)?.toDouble() ?? 0.0;
-    final montoHoyBs = montoHoy * _tasaUsd;
+    final totales = _totalesLoteActivo;
+    final montoLoteActivo = (totales?['total_usd'] as num?)?.toDouble() ?? 0.0;
+    final montoLoteActivoBs = montoLoteActivo * _tasaUsd;
 
     return Card(
       color: isDark ? AppColors.darkCard : AppColors.lightCard,
@@ -460,8 +463,8 @@ class _AdminCierreLoteScreenState extends State<AdminCierreLoteScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: _buildStatItem(
-                    'Monto total del día (Bs)',
-                    _currencyFormat.format(montoHoyBs),
+                    'Monto del lote activo (Bs)',
+                    _currencyFormat.format(montoLoteActivoBs),
                     Icons.attach_money,
                     Colors.green,
                     isDark,

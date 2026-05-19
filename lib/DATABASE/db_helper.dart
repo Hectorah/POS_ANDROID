@@ -1552,8 +1552,8 @@ class DbHelper {
     try {
       final datosCompletos = ubiiData.toString();
 
-      // Calcular totales reales desde las facturas locales del día
-      final totalesLocales = await obtenerTotalesDelDia();
+      // Calcular totales reales desde el lote de facturas activas
+      final totalesLocales = await obtenerTotalesLoteActivo();
       final totalFacturasLocales = totalesLocales['total_facturas'] ?? 0;
       final montoTotalLocal = (totalesLocales['total_usd'] as num?)?.toDouble() ?? 0.0;
 
@@ -1565,19 +1565,30 @@ class DbHelper {
           ? (double.tryParse(ubiiData['totalAmount'].toString()) ?? montoTotalLocal)
           : montoTotalLocal;
 
-      final cierreId = await db.insert('cierres_lote', {
-        'fecha_creacion': DateTime.now().toIso8601String(),
-        'usuario_id': usuarioId,
-        'tipo_cierre': tipoCierre,
-        'ubii_response_code': ubiiData['code'],
-        'ubii_response_message': ubiiData['message'],
-        'ubii_terminal': ubiiData['terminal'],
-        'ubii_lote': ubiiData['lote'],
-        'ubii_fecha': ubiiData['date'],
-        'ubii_hora': ubiiData['time'],
-        'total_transacciones': totalTransacciones,
-        'monto_total': montoTotal,
-        'datos_completos': datosCompletos,
+      int cierreId = 0;
+      await db.transaction((txn) async {
+        cierreId = await txn.insert('cierres_lote', {
+          'fecha_creacion': DateTime.now().toIso8601String(),
+          'usuario_id': usuarioId,
+          'tipo_cierre': tipoCierre,
+          'ubii_response_code': ubiiData['code'],
+          'ubii_response_message': ubiiData['message'],
+          'ubii_terminal': ubiiData['terminal'],
+          'ubii_lote': ubiiData['lote'],
+          'ubii_fecha': ubiiData['date'],
+          'ubii_hora': ubiiData['time'],
+          'total_transacciones': totalTransacciones,
+          'monto_total': montoTotal,
+          'datos_completos': datosCompletos,
+        });
+
+        // Marcar todas las facturas de tarjeta/electrónicas del lote activo como cerradas
+        await txn.rawUpdate('''
+          UPDATE factura
+          SET estado = 'cerrado'
+          WHERE estado = 'activo'
+            AND metodo_pago != 'cash'
+        ''');
       });
       
       debugPrint('✅ Cierre de lote registrado con ID: $cierreId');
@@ -1677,12 +1688,9 @@ class DbHelper {
     };
   }
 
-  /// Obtener totales de facturas activas del día actual
-  Future<Map<String, dynamic>> obtenerTotalesDelDia() async {
+  /// Obtener totales de facturas de tarjeta/electrónicas del lote actual (estado = 'activo' y metodo_pago != 'cash')
+  Future<Map<String, dynamic>> obtenerTotalesLoteActivo() async {
     final db = await database;
-    final hoy = DateTime.now();
-    final inicio = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
-    final fin = DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59).toIso8601String();
 
     final result = await db.rawQuery('''
       SELECT
@@ -1694,9 +1702,8 @@ class DbHelper {
         COALESCE(SUM(retencion_iva), 0) as total_retencion
       FROM factura
       WHERE estado = 'activo'
-        AND fecha_creacion >= ?
-        AND fecha_creacion <= ?
-    ''', [inicio, fin]);
+        AND metodo_pago != 'cash'
+    ''');
 
     return result.isNotEmpty ? result.first : {
       'total_facturas': 0,

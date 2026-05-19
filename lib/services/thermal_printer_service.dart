@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+// import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import '../core/app_config.dart';
 
@@ -61,13 +61,6 @@ class ThermalPrinterService {
     RegExp reg = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
     parts[0] = parts[0].replaceAllMapped(reg, (Match m) => '${m[1]}.');
     return '${parts[0]},${parts[1]}';
-  }
-
-  /// RELLENO DE ESPACIOS - Calibrado para margen derecho extremo
-  static String _formatRow(String left, String right, {int width = 48}) {
-    final int spaceCount = width - left.length - right.length;
-    if (spaceCount <= 0) return '$left $right';
-    return left + (' ' * spaceCount) + right;
   }
 
   static String _translatePaymentMethod(String? method) {
@@ -136,13 +129,19 @@ class ThermalPrinterService {
         isBold: true));
 
     // 3. Cliente
-    lines.add(
-        PrinterLine(text: 'NOMBRE: ${clientName.toUpperCase()}', alignment: 'left', fontSize: 18));
-    lines.add(
-        PrinterLine(text: 'RIF: ${clientRif.toUpperCase()}', alignment: 'left', fontSize: 18));
+    lines.add(PrinterLine(
+        text: 'NOMBRE: ${clientName.toUpperCase()}',
+        alignment: 'left',
+        fontSize: 18));
+    lines.add(PrinterLine(
+        text: 'RIF: ${clientRif.toUpperCase()}',
+        alignment: 'left',
+        fontSize: 18));
     if (clientAddress != null && clientAddress.trim().isNotEmpty) {
-      lines.add(
-          PrinterLine(text: 'DIR: ${clientAddress.trim().toUpperCase()}', alignment: 'left', fontSize: 18));
+      lines.add(PrinterLine(
+          text: 'DIR: ${clientAddress.trim().toUpperCase()}',
+          alignment: 'left',
+          fontSize: 18));
     }
 
     lines.add(PrinterLine(
@@ -153,9 +152,12 @@ class ThermalPrinterService {
     int itemIdx = 1;
     double totalArticulos = 0;
     for (final item in items) {
-      final nombre = (item['nombre'] as String? ?? item['name'] as String? ?? 'PRODUCTO').toUpperCase();
+      final nombre =
+          (item['nombre'] as String? ?? item['name'] as String? ?? 'PRODUCTO')
+              .toUpperCase();
       final cant = (item['cantidad'] ?? item['quantity'] ?? 1) as num;
-      final precioConIva = (item['precio_unitario'] ?? item['price'] ?? 0.0) as double;
+      final precioConIva =
+          (item['precio_unitario'] ?? item['price'] ?? 0.0) as double;
       final precioBase = precioConIva / 1.16; // Extraer IVA para base imponible
       final subtotalBaseBs = (precioBase * tasaCambio) * cant.toDouble();
       totalArticulos += cant.toDouble();
@@ -171,9 +173,7 @@ class ThermalPrinterService {
       final montoStr = _formatAmount(subtotalBaseBs);
       // Productos justificados horizontalmente en una misma línea (Estilo Oficial Ubii)
       lines.add(PrinterLine(
-          text: '$cantStr%$montoStr',
-          alignment: 'justifed',
-          fontSize: 20));
+          text: '$cantStr%$montoStr', alignment: 'justifed', fontSize: 20));
       itemIdx++;
     }
 
@@ -184,19 +184,19 @@ class ThermalPrinterService {
         text: 'SUBTTL Bs%${_formatAmount(baseImponible * tasaCambio)}',
         alignment: 'justifed',
         fontSize: 22));
-        
+
     if (montoExento > 0) {
       lines.add(PrinterLine(
           text: 'EXENTO Bs%${_formatAmount(montoExento * tasaCambio)}',
           alignment: 'justifed',
           fontSize: 22));
     }
-    
+
     lines.add(PrinterLine(
         text: 'IVA G 16%${_formatAmount(montoIva * tasaCambio)}',
         alignment: 'justifed',
         fontSize: 22));
-        
+
     lines.add(PrinterLine(text: ' ', fontSize: 10));
 
     lines.add(PrinterLine(

@@ -520,60 +520,60 @@ class _CreateProductScreenState extends State<CreateProductScreen> {
           ),
           SizedBox(height: isTablet ? 12 : 8),
 
-          // Opción: General (16%)
-          RadioListTile<String>(
-            value: 'G',
+          RadioGroup<String>(
             groupValue: _tipoImpuesto,
             onChanged: (value) {
               setState(() {
                 _tipoImpuesto = value!;
               });
             },
-            title: Text(
-              'General (G) - IVA 16%',
-              style: TextStyle(
-                fontSize: isTablet ? 15 : 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: Text(
-              'Aplica a la mayoría de productos (ropa, tecnología, servicios)',
-              style: TextStyle(
-                fontSize: isTablet ? 13 : 11,
-                color: Colors.grey[600],
-              ),
-            ),
-            activeColor: AppColors.primary,
-            contentPadding: EdgeInsets.zero,
-          ),
+            child: Column(
+              children: [
+                // Opción: General (16%)
+                RadioListTile<String>(
+                  value: 'G',
+                  title: Text(
+                    'General (G) - IVA 16%',
+                    style: TextStyle(
+                      fontSize: isTablet ? 15 : 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Aplica a la mayoría de productos (ropa, tecnología, servicios)',
+                    style: TextStyle(
+                      fontSize: isTablet ? 13 : 11,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                ),
 
-          Divider(height: 1, color: Colors.grey[300]),
+                Divider(height: 1, color: Colors.grey[300]),
 
-          // Opción: Exento
-          RadioListTile<String>(
-            value: 'E',
-            groupValue: _tipoImpuesto,
-            onChanged: (value) {
-              setState(() {
-                _tipoImpuesto = value!;
-              });
-            },
-            title: Text(
-              'Exento (E) - Sin IVA',
-              style: TextStyle(
-                fontSize: isTablet ? 15 : 13,
-                fontWeight: FontWeight.w500,
-              ),
+                // Opción: Exento
+                RadioListTile<String>(
+                  value: 'E',
+                  title: Text(
+                    'Exento (E) - Sin IVA',
+                    style: TextStyle(
+                      fontSize: isTablet ? 15 : 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Productos sin IVA (alimentos básicos, medicamentos, etc.)',
+                    style: TextStyle(
+                      fontSize: isTablet ? 13 : 11,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  activeColor: AppColors.success,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
             ),
-            subtitle: Text(
-              'Productos sin IVA (alimentos básicos, medicamentos, etc.)',
-              style: TextStyle(
-                fontSize: isTablet ? 13 : 11,
-                color: Colors.grey[600],
-              ),
-            ),
-            activeColor: AppColors.success,
-            contentPadding: EdgeInsets.zero,
           ),
         ],
       ),
