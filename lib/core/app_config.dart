@@ -94,6 +94,10 @@ class AppConfig {
   
   /// Tipo de documento por defecto
   static const String tipoDocumentoPorDefecto = 'Factura';
+
+  /// Serial del dispositivo fiscal (opcional, si se deja vacío se intentará obtener dinámicamente)
+  static String get serialDispositivo => _getEnv('FISCAL_SERIAL_DISPOSITIVO', defaultValue: '');
+
   
   // ==========================================================================
   // 3. CONFIGURACIÓN DE UBII (PAGOS ELECTRÓNICOS)

@@ -10,12 +10,14 @@ class PrinterLine {
   final String alignment; // 'left', 'center', 'right'
   final int fontSize;
   final bool isBold;
+  final bool isItalic;
 
   PrinterLine({
     required this.text,
     this.alignment = 'left',
     this.fontSize = 12,
     this.isBold = false,
+    this.isItalic = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -24,6 +26,7 @@ class PrinterLine {
       'alignment': alignment,
       'font_size': fontSize,
       'is_bold': isBold,
+      'is_italic': isItalic,
     };
   }
 }
@@ -88,8 +91,10 @@ class ThermalPrinterService {
     required double total,
     required double tasaCambio,
     double montoExento = 0.0,
+    double retencionIva = 0.0,
     String? metodoPago,
     String? referencia,
+    String deviceSerial = 'N/A',
   }) {
     final lines = <PrinterLine>[];
     final now = DateTime.now();
@@ -156,10 +161,15 @@ class ThermalPrinterService {
           (item['nombre'] as String? ?? item['name'] as String? ?? 'PRODUCTO')
               .toUpperCase();
       final cant = (item['cantidad'] ?? item['quantity'] ?? 1) as num;
-      final precioConIva =
-          (item['precio_unitario'] ?? item['price'] ?? 0.0) as double;
-      final precioBase = precioConIva / 1.16; // Extraer IVA para base imponible
-      final subtotalBaseBs = (precioBase * tasaCambio) * cant.toDouble();
+      
+      // Los precios unitarios provienen de la UI/BD en moneda base limpia (USD)
+      // y representan el precio base (tax-exclusive). No se debe aplicar divisiones agresivas.
+      final precioBaseUSD = (item['precio_unitario'] ?? item['price'] ?? 0.0) as double;
+      final subtotalUSD = precioBaseUSD * cant.toDouble();
+      
+      // Aplicación de la tasa de cambio a nivel de mantisa pura sin redondeos intermedios agresivos
+      final precioBs = precioBaseUSD * tasaCambio;
+      final subtotalBs = subtotalUSD * tasaCambio;
       totalArticulos += cant.toDouble();
 
       lines.add(PrinterLine(
@@ -168,9 +178,11 @@ class ThermalPrinterService {
           fontSize: 20,
           isBold: true));
 
-      final cantStr =
-          '${cant.toInt()} X ${_formatAmount(precioBase * tasaCambio)}';
-      final montoStr = _formatAmount(subtotalBaseBs);
+      // Soportar formato de cantidades enteras y decimales/fraccionarias de forma dinámica
+      final String cantStrFormatted = cant % 1 == 0 ? cant.toInt().toString() : cant.toStringAsFixed(3);
+      final cantStr = '$cantStrFormatted X Bs ${_formatAmount(precioBs)}';
+      final montoStr = 'Bs ${_formatAmount(subtotalBs)}';
+      
       // Productos justificados horizontalmente en una misma línea (Estilo Oficial Ubii)
       lines.add(PrinterLine(
           text: '$cantStr%$montoStr', alignment: 'justifed', fontSize: 20));
@@ -180,27 +192,41 @@ class ThermalPrinterService {
     lines.add(_separator());
 
     // 5. Totales (JUSTIFICADOS HORIZONTALMENTE NATIVO - ALINEACIÓN PERFECTA)
+    // El subtotal en Bolívares debe coincidir exactamente con la suma en USD multiplicada por la tasa de cambio
     lines.add(PrinterLine(
-        text: 'SUBTTL Bs%${_formatAmount(baseImponible * tasaCambio)}',
+        text: 'SUBTTL%Bs ${_formatAmount((baseImponible + montoExento) * tasaCambio)}',
         alignment: 'justifed',
         fontSize: 22));
 
     if (montoExento > 0) {
       lines.add(PrinterLine(
-          text: 'EXENTO Bs%${_formatAmount(montoExento * tasaCambio)}',
+          text: 'EXENTO%Bs ${_formatAmount(montoExento * tasaCambio)}',
           alignment: 'justifed',
           fontSize: 22));
     }
 
     lines.add(PrinterLine(
-        text: 'IVA G 16%${_formatAmount(montoIva * tasaCambio)}',
+        text: 'BI G16％%Bs ${_formatAmount(baseImponible * tasaCambio)}',
         alignment: 'justifed',
         fontSize: 22));
+
+    lines.add(PrinterLine(
+        text: 'IVA G16％%Bs ${_formatAmount(montoIva * tasaCambio)}',
+        alignment: 'justifed',
+        fontSize: 22));
+
+    // Si existe retención de IVA para un agente de retención fiscal, se refleja simétricamente
+    if (retencionIva > 0.0) {
+      lines.add(PrinterLine(
+          text: 'RETEN. IVA%Bs -${_formatAmount(retencionIva * tasaCambio)}',
+          alignment: 'justifed',
+          fontSize: 22));
+    }
 
     lines.add(PrinterLine(text: ' ', fontSize: 10));
 
     lines.add(PrinterLine(
-        text: 'TOTAL Bs%${_formatAmount(total * tasaCambio)}',
+        text: 'TOTAL%Bs ${_formatAmount(total * tasaCambio)}',
         alignment: 'justifed',
         fontSize: 22,
         isBold: true));
@@ -208,15 +234,6 @@ class ThermalPrinterService {
     lines.add(_separator());
 
     // 6. Resumen Fiscal e Info Adicional (JUSTIFICADOS HORIZONTALMENTE NATIVO)
-    lines.add(PrinterLine(
-        text: 'BI G 16%${_formatAmount(baseImponible * tasaCambio)}',
-        alignment: 'justifed',
-        fontSize: 16));
-    lines.add(PrinterLine(
-        text: 'IVA G 16%${_formatAmount(montoIva * tasaCambio)}',
-        alignment: 'justifed',
-        fontSize: 16));
-
     lines.add(PrinterLine(
         text: 'METODO:%${_translatePaymentMethod(metodoPago)}',
         alignment: 'justifed',
@@ -238,9 +255,36 @@ class ThermalPrinterService {
         fontSize: 24,
         isBold: true));
 
+    // Pie de página fiscal
+    lines.add(PrinterLine(
+        text: 'MH%$deviceSerial',
+        alignment: 'justifed',
+        fontSize: 20,
+        isItalic: true));
+
     lines.add(PrinterLine(text: '', fontSize: 100));
 
     return lines;
+  }
+
+  static Future<String> getDeviceSerial() async {
+    // Si está configurado en .env, usar ese
+    if (AppConfig.serialDispositivo.isNotEmpty) {
+      return AppConfig.serialDispositivo;
+    }
+    
+    // Si no, intentar obtenerlo de forma nativa
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final String? serial = await _platform.invokeMethod('getDeviceSerial');
+        if (serial != null && serial.isNotEmpty) {
+          return serial;
+        }
+      } catch (e) {
+        debugPrint('🚨 Error obteniendo serial nativo: $e');
+      }
+    }
+    return 'N/A'; // Valor por defecto si todo falla
   }
 
   static Future<bool> printInvoice({
@@ -254,11 +298,15 @@ class ThermalPrinterService {
     required double total,
     required double tasaCambio,
     double montoExento = 0.0,
+    double retencionIva = 0.0,
     String? metodoPago,
     String? referencia,
     String? authCode,
     String? cardType,
   }) async {
+    // Obtener el serial del dispositivo de forma asíncrona
+    final deviceSerial = await getDeviceSerial();
+
     final lines = buildInvoiceLines(
       invoiceNumber: invoiceNumber,
       clientName: clientName,
@@ -270,8 +318,10 @@ class ThermalPrinterService {
       montoIva: montoIva,
       total: total,
       tasaCambio: tasaCambio,
+      retencionIva: retencionIva,
       metodoPago: metodoPago,
       referencia: referencia,
+      deviceSerial: deviceSerial,
     );
     return printReceipt(lines: lines);
   }

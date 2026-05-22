@@ -48,6 +48,10 @@ class MainActivity: FlutterActivity() {
                         result.error("INVALID_ARGUMENTS", "Lines are required", null)
                     }
                 }
+                "getDeviceSerial" -> {
+                    val serial = getDeviceSerial()
+                    result.success(serial)
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -320,5 +324,30 @@ class MainActivity: FlutterActivity() {
             android.util.Log.e("UbiiPOS", "  Expected: $UBII_REQUEST_CODE")
             android.util.Log.e("UbiiPOS", "  Received: $requestCode")
         }
+    }
+
+    private fun getDeviceSerial(): String {
+        var serial = "unknown"
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                try {
+                    serial = android.os.Build.getSerial()
+                } catch (e: SecurityException) {
+                    serial = android.os.Build.SERIAL
+                }
+            } else {
+                serial = android.os.Build.SERIAL
+            }
+        } catch (e: Exception) {
+            // Ignorar y dejar en unknown
+        }
+        
+        if (serial == "unknown" || serial.isEmpty() || serial.equals("unknown", ignoreCase = true)) {
+            serial = android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            ) ?: "UNKNOWN"
+        }
+        return serial
     }
 }

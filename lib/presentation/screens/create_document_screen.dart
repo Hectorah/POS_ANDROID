@@ -1548,6 +1548,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           'cantidad': item.quantity,
           'precio_unitario': item.price,
           'subtotal': item.price * item.quantity,
+          'tipo_impuesto': item.tipoImpuesto,
         };
       }).toList();
 
@@ -1565,6 +1566,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         montoIva: _iva,
         total: _total,
         tasaCambio: _exchangeRate,
+        retencionIva: _retencionIVA,
         metodoPago: metodoPago,
         referencia: referencia,
         authCode: authCode,
