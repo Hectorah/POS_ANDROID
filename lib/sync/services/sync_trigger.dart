@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/connectivity_service.dart';
 import '../enums/sync_status.dart';
-import '../../DATABASE/db_helper.dart';
+import '../../database/db_helper.dart';
 
 /// Servicio que dispara la sincronización con Supabase
 /// DESPUÉS de que DbHelper ya guardó en SQLite.
@@ -118,6 +118,84 @@ class SyncTrigger {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // NOTAS DE CRÉDITO
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Llama esto justo después de crear una nota de crédito
+  Future<void> onNotaCreditoCreada(int notaCreditoId) async {
+    if (!_online) {
+      await _markPending('nota_credito', notaCreditoId, SyncStatus.pendingUpload);
+      // Marcar detalles también
+      await _markPendingWhere(
+          'nota_credito_detalle', 'nota_credito_id = ?', [notaCreditoId], SyncStatus.pendingUpload);
+      return;
+    }
+    await _sincronizarNotaCreditoCompleta(notaCreditoId);
+  }
+
+  /// Llama esto después de procesar una nota de crédito (ajustar inventario)
+  Future<void> onNotaCreditoProcesada(int notaCreditoId) async {
+    if (!_online) {
+      await _markPending('nota_credito', notaCreditoId, SyncStatus.pendingUpdate);
+      return;
+    }
+    await _upsertFromLocal('nota_credito', notaCreditoId, uniqueCol: 'numero_control');
+  }
+
+  /// Llama esto después de anular una nota de crédito
+  Future<void> onNotaCreditoAnulada(int notaCreditoId) async {
+    if (!_online) {
+      await _markPending('nota_credito', notaCreditoId, SyncStatus.pendingUpdate);
+      return;
+    }
+    await _upsertFromLocal('nota_credito', notaCreditoId, uniqueCol: 'numero_control');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SESIONES FISCALES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> onSesionFiscalCreada(int localId) async {
+    if (!_online) {
+      await _markPending('sesiones_fiscales', localId, SyncStatus.pendingUpload);
+      return;
+    }
+    await _upsertFromLocal('sesiones_fiscales', localId, uniqueCol: 'numero_sesion');
+  }
+
+  Future<void> onSesionFiscalActualizada(int localId) async {
+    if (!_online) {
+      await _markPending('sesiones_fiscales', localId, SyncStatus.pendingUpdate);
+      return;
+    }
+    await _upsertFromLocal('sesiones_fiscales', localId, uniqueCol: 'numero_sesion');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // REPORTES DE CIERRE
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> onReporteCierreCreado(int localId) async {
+    if (!_online) {
+      await _markPending('reportes_cierre', localId, SyncStatus.pendingUpload);
+      return;
+    }
+    await _upsertFromLocal('reportes_cierre', localId, uniqueCol: 'numero_reporte');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SECUENCIAS DE DOCUMENTOS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> onSecuenciaDocumentoActualizada(int localId) async {
+    if (!_online) {
+      await _markPending('secuencias_documentos', localId, SyncStatus.pendingUpdate);
+      return;
+    }
+    await _upsertFromLocal('secuencias_documentos', localId, uniqueCol: 'tipo_documento');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // SYNC PENDIENTES — llamado por SyncManager al recuperar conexión
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -130,9 +208,20 @@ class SyncTrigger {
     await _pushPendingTable('clientes',       uniqueCol: 'identificacion');
     await _pushPendingTable('productos',      uniqueCol: 'cod_articulo');
     await _pushPendingExistencias();
+    
+    // Sincronizar sesiones fiscales antes de las facturas (FK)
+    await _pushPendingTable('sesiones_fiscales', uniqueCol: 'numero_sesion');
+    
     await _pushPendingFacturas();
     await _pushPendingTable('factura_detalle');
     await _pushPendingTable('cierres_lote');
+    
+    // Reportes de cierre y secuencias
+    await _pushPendingTable('reportes_cierre', uniqueCol: 'numero_reporte');
+    await _pushPendingTable('secuencias_documentos', uniqueCol: 'tipo_documento');
+    
+    await _pushPendingTable('nota_credito_motivo', uniqueCol: 'codigo');
+    await _pushPendingNotasCredito();
 
     debugPrint('✅ SyncTrigger: push de pendientes completado');
   }
@@ -348,6 +437,106 @@ class SyncTrigger {
       }
     } catch (e) {
       debugPrint('❌ [factura] Error push pendientes: $e');
+    }
+  }
+
+  /// Sincroniza nota de crédito cabecera + todos sus detalles
+  Future<void> _sincronizarNotaCreditoCompleta(int notaCreditoId) async {
+    try {
+      final db = await DbHelper.instance.database;
+
+      // 1. Cabecera
+      final notasCredito = await db.query(
+        'nota_credito',
+        where: 'id = ?',
+        whereArgs: [notaCreditoId],
+      );
+      if (notasCredito.isEmpty) return;
+
+      final notaCreditoRow = _toRemoteRow(notasCredito.first);
+      final notaCreditoResp = await _sb
+          .from('nota_credito')
+          .upsert(notaCreditoRow, onConflict: 'numero_control')
+          .select('server_id')
+          .single();
+
+      final notaCreditoServerId = notaCreditoResp['server_id'] as String?;
+
+      await db.update(
+        'nota_credito',
+        {
+          if (notaCreditoServerId != null) 'server_id': notaCreditoServerId,
+          'sync_status': SyncStatus.synced.toInt(),
+          'last_modified': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [notaCreditoId],
+      );
+
+      // 2. Detalles
+      final detalles = await db.query(
+        'nota_credito_detalle',
+        where: 'nota_credito_id = ?',
+        whereArgs: [notaCreditoId],
+      );
+
+      for (final detalle in detalles) {
+        // Solo insertar si aún no tiene server_id (evita duplicados)
+        if (detalle['server_id'] != null) continue;
+
+        final detalleRow = _toRemoteRow(detalle);
+        final detalleResp = await _sb
+            .from('nota_credito_detalle')
+            .insert(detalleRow)
+            .select('server_id')
+            .single();
+
+        final detalleServerId = detalleResp['server_id'] as String?;
+
+        await db.update(
+          'nota_credito_detalle',
+          {
+            if (detalleServerId != null) 'server_id': detalleServerId,
+            'sync_status': SyncStatus.synced.toInt(),
+            'last_modified': DateTime.now().toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [detalle['id']],
+        );
+      }
+
+      // 3. Actualizar stock de productos devueltos (si está procesada)
+      final estado = notasCredito.first['estado'] as String?;
+      if (estado == 'procesada') {
+        for (final detalle in detalles) {
+          final productoId = detalle['producto_id'] as int;
+          await _upsertExistenciaByProductoId(productoId);
+        }
+      }
+
+      debugPrint('☁️ [nota_credito] Nota de crédito $notaCreditoId sincronizada completa');
+    } catch (e) {
+      debugPrint('❌ [nota_credito] Error sync nota de crédito $notaCreditoId: $e');
+      await _markPending('nota_credito', notaCreditoId, SyncStatus.pendingUpdate);
+    }
+  }
+
+  Future<void> _pushPendingNotasCredito() async {
+    try {
+      final db = await DbHelper.instance.database;
+      final pending = await db.query(
+        'nota_credito',
+        where: 'sync_status IN (?, ?)',
+        whereArgs: [
+          SyncStatus.pendingUpload.toInt(),
+          SyncStatus.pendingUpdate.toInt()
+        ],
+      );
+      for (final row in pending) {
+        await _sincronizarNotaCreditoCompleta(row['id'] as int);
+      }
+    } catch (e) {
+      debugPrint('❌ [nota_credito] Error push pendientes: $e');
     }
   }
 

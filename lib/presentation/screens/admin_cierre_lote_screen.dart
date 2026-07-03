@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
-import '../../DATABASE/db_helper.dart';
+import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
 import '../widgets/custom_snackbar.dart';
 

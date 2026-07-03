@@ -9,7 +9,7 @@ import '../core/app_config.dart';
 /// 
 /// Flujo:
 /// 1. Cliente realiza Pago Móvil desde su app bancaria
-/// 2. Cliente proporciona la referencia del pago
+/// 2. Cliente proporciona la referencia del pago 
 /// 3. Cajero ingresa la referencia en tu app
 /// 4. Este servicio VERIFICA con Ubii si el pago es válido
 class UbiiPagoMovilService {

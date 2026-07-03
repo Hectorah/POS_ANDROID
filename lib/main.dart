@@ -6,8 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'providers/user_provider.dart';
+import 'providers/fiscal_provider.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/documents_screen.dart';
+import 'presentation/screens/apertura_fiscal_screen.dart';
+import 'presentation/screens/cierre_fiscal_screen.dart';
 import 'database/db_helper.dart';
 import 'services/config_service.dart';
 import 'services/exchange_rate_service.dart';
@@ -132,6 +135,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => FiscalProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
@@ -145,6 +149,8 @@ class MyApp extends StatelessWidget {
             routes: {
               '/': (context) => const LoginScreen(),
               '/documents': (context) => const DocumentsScreen(),
+              '/apertura-fiscal': (context) => const AperturaFiscalScreen(),
+              '/cierre-fiscal': (context) => const CierreFiscalScreen(),
             },
           );
         },

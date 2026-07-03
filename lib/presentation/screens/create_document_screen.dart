@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../database/db_helper.dart';
 import '../../services/ubii_pos_service.dart';
@@ -10,6 +11,9 @@ import '../../models/pago_movil_transaction.dart';
 import '../widgets/custom_snackbar.dart';
 import 'pago_movil_screen.dart';
 import '../../models/app_models.dart';
+import '../../providers/fiscal_provider.dart';
+import '../../services/fiscal_service.dart';
+import '../widgets/estado_fiscal_banner.dart';
 
 // Modelos locales simplificados (sin backend)
 class ClientModel {
@@ -115,11 +119,11 @@ class CurrencyFormatter {
     final parts = number.toStringAsFixed(decimals).split('.');
     final integerPart = parts[0];
     final decimalPart = parts.length > 1 ? parts[1] : '';
-    
+
     // Agregar separadores de miles
     final buffer = StringBuffer();
     var count = 0;
-    
+
     for (var i = integerPart.length - 1; i >= 0; i--) {
       if (count > 0 && count % 3 == 0) {
         buffer.write(',');
@@ -127,10 +131,10 @@ class CurrencyFormatter {
       buffer.write(integerPart[i]);
       count++;
     }
-    
+
     // Invertir el string
     final formattedInteger = buffer.toString().split('').reversed.join('');
-    
+
     // Retornar con decimales
     return '$formattedInteger.$decimalPart';
   }
@@ -151,37 +155,37 @@ class CreateDocumentScreen extends StatefulWidget {
   State<CreateDocumentScreen> createState() => _CreateDocumentScreenState();
 }
 
-
 class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   String _step = 'creation';
-  
+  String? _ultimoNumeroControl;
+
   final _clientFormKey = GlobalKey<FormState>();
   final _paymentFormKey = GlobalKey<FormState>();
-  
+
   final _rifSearchController = TextEditingController();
   final _productSearchController = TextEditingController();
   ClientModel? _selectedClient;
-  
+
   final List<ProductModel> _cart = [];
-  
+
   String? _selectedPaymentMethod;
   final _paymentReferenceController = TextEditingController();
-  
+
   double _exchangeRate = 36.50;
   bool _isRefreshingRate = false;
-  
+
   bool _isSearchingClient = false;
   bool _isLoadingProducts = false;
-  
+
   String _selectedRifType = 'V';
   final List<String> _rifTypes = ['V', 'E', 'J'];
-  
+
   List<ProductModel> _availableProducts = [];
   List<ProductModel> _filteredProducts = [];
-  
+
   final UbiiPosService _ubiiService = UbiiPosService();
   bool _isProcessingPayment = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -194,14 +198,15 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final tasaUsd = prefs.getDouble('tasa_usd');
-      
+
       if (tasaUsd != null && tasaUsd > 0) {
         setState(() {
           _exchangeRate = tasaUsd;
         });
         debugPrint('💱 Tasa de cambio cargada: \$1 = Bs. $_exchangeRate');
       } else {
-        debugPrint('⚠️ No hay tasa guardada, usando por defecto: $_exchangeRate');
+        debugPrint(
+            '⚠️ No hay tasa guardada, usando por defecto: $_exchangeRate');
       }
     } catch (e) {
       debugPrint('❌ Error cargando tasa de cambio: $e');
@@ -212,7 +217,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   Future<void> _loadDefaultClient() async {
     try {
       final cliente = await DbHelper.instance.buscarClientePorId('V-00000000');
-      
+
       if (cliente != null) {
         setState(() {
           _selectedClient = ClientModel.fromMap(cliente);
@@ -228,9 +233,10 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   Future<void> _searchClient() async {
     // Cerrar el teclado
     FocusScope.of(context).unfocus();
-    
-    final identificacion = '$_selectedRifType-${_rifSearchController.text.trim()}';
-    
+
+    final identificacion =
+        '$_selectedRifType-${_rifSearchController.text.trim()}';
+
     if (_rifSearchController.text.trim().isEmpty) {
       _showSnackBar('Ingrese un número de identificación', AppColors.warning);
       return;
@@ -240,8 +246,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
 
     try {
       // Buscar en la base de datos
-      final cliente = await DbHelper.instance.buscarClientePorId(identificacion);
-      
+      final cliente =
+          await DbHelper.instance.buscarClientePorId(identificacion);
+
       if (cliente != null) {
         // Cliente encontrado
         setState(() {
@@ -260,7 +267,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       if (mounted) {
         await ErrorDialog.databaseError(
           context,
-          details: 'Error al buscar cliente en la base de datos:\n$e\n\nIdentificación: $identificacion',
+          details:
+              'Error al buscar cliente en la base de datos:\n$e\n\nIdentificación: $identificacion',
         );
       }
       debugPrint('❌ Error buscando cliente: $e');
@@ -282,7 +290,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+              backgroundColor:
+                  isDark ? AppColors.darkCard : AppColors.lightCard,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -307,7 +316,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       'Cliente no encontrado con identificación:',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -326,7 +337,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         labelText: 'Nombre *',
                         hintText: 'Ej: JUAN PÉREZ',
                         filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        fillColor: isDark
+                            ? AppColors.darkBackground
+                            : AppColors.lightBackground,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -341,7 +354,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         labelText: 'Dirección *',
                         hintText: 'Ej: CALLE 123, CIUDAD',
                         filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        fillColor: isDark
+                            ? AppColors.darkBackground
+                            : AppColors.lightBackground,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -357,7 +372,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         labelText: 'Teléfono (opcional)',
                         hintText: 'Ej: 0414-1234567',
                         filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        fillColor: isDark
+                            ? AppColors.darkBackground
+                            : AppColors.lightBackground,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -372,7 +389,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         labelText: 'Correo (opcional)',
                         hintText: 'Ej: cliente@email.com',
                         filled: true,
-                        fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                        fillColor: isDark
+                            ? AppColors.darkBackground
+                            : AppColors.lightBackground,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -408,10 +427,11 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 ElevatedButton.icon(
                   onPressed: () async {
                     final nombre = nombreController.text.trim().toUpperCase();
-                    final direccion = direccionController.text.trim().toUpperCase();
+                    final direccion =
+                        direccionController.text.trim().toUpperCase();
                     final telefono = telefonoController.text.trim();
                     final correo = correoController.text.trim().toUpperCase();
-                    
+
                     if (nombre.isEmpty) {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(
                         const SnackBar(
@@ -443,8 +463,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         'agente_retencion': isAgenteRetencion ? 1 : 0,
                       };
 
-                      final clienteId = await DbHelper.instance.insertarCliente(clienteData);
-                      
+                      final clienteId =
+                          await DbHelper.instance.insertarCliente(clienteData);
+
                       if (clienteId > 0) {
                         // Cliente registrado exitosamente
                         setState(() {
@@ -461,10 +482,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
 
                         if (context.mounted) {
                           Navigator.of(dialogContext).pop();
-                          _showSnackBar('Cliente registrado exitosamente', AppColors.success);
+                          _showSnackBar('Cliente registrado exitosamente',
+                              AppColors.success);
                         }
-                        
-                        debugPrint('✅ Cliente registrado: $nombre (ID: $clienteId)');
+
+                        debugPrint(
+                            '✅ Cliente registrado: $nombre (ID: $clienteId)');
                       }
                     } catch (e) {
                       if (context.mounted) {
@@ -502,13 +525,13 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       debugPrint('ℹ️ Productos ya cargados en caché');
       return;
     }
-    
+
     setState(() => _isLoadingProducts = true);
-    
+
     try {
       debugPrint('🔄 Cargando productos desde BD...');
       final productos = await DbHelper.instance.obtenerProductos();
-      
+
       setState(() {
         _availableProducts = productos
             .map((map) => ProductModel.fromMap(map))
@@ -517,7 +540,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         _filteredProducts = _availableProducts;
         _isLoadingProducts = false;
       });
-      
+
       debugPrint('✅ ${_availableProducts.length} productos cargados');
     } catch (e) {
       debugPrint('❌ Error cargando productos: $e');
@@ -550,7 +573,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     setState(() {
       _filteredProducts = _availableProducts.where((product) {
         return product.code.toLowerCase().contains(queryLower) ||
-               product.name.toLowerCase().contains(queryLower);
+            product.name.toLowerCase().contains(queryLower);
       }).toList();
     });
   }
@@ -571,12 +594,14 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final qty = double.tryParse(controller.text.replaceAll(',', '.')) ?? 0.0;
+          final qty =
+              double.tryParse(controller.text.replaceAll(',', '.')) ?? 0.0;
           final isValid = qty > 0 && qty <= product.stock;
 
           return AlertDialog(
             backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Text(
               product.name,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
@@ -591,24 +616,31 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   'Stock disponible: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock} Kg',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: controller,
                   autofocus: true,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,3}')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*[.,]?\d{0,3}')),
                   ],
                   decoration: InputDecoration(
                     labelText: 'Peso (Kg)',
                     hintText: 'Ej: 0.560',
                     suffixText: 'Kg',
                     filled: true,
-                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    fillColor: isDark
+                        ? AppColors.darkBackground
+                        : AppColors.lightBackground,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     errorText: controller.text.isNotEmpty && !isValid
                         ? qty <= 0
                             ? 'Ingresa un peso válido'
@@ -658,7 +690,10 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       );
 
       if (newQty > product.stock) {
-        _showSnackBar('Stock insuficiente. Disponible: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock}', AppColors.warning, topPosition: true);
+        _showSnackBar(
+            'Stock insuficiente. Disponible: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock}',
+            AppColors.warning,
+            topPosition: true);
         return;
       }
       setState(() => existingItem.quantity = newQty);
@@ -684,7 +719,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   }
 
   // Cálculos según SENIAT
-  
+
   /// Base Imponible (G): Suma de productos con IVA General (16%)
   double get _baseImponible {
     return _cart.fold(0.0, (sum, item) {
@@ -740,12 +775,15 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     if (newQuantity < minQty) return;
 
     if (newQuantity > item.stock) {
-      _showSnackBar('Stock insuficiente. Disponible: ${item.stock % 1 == 0 ? item.stock.toInt() : item.stock}', AppColors.warning);
+      _showSnackBar(
+          'Stock insuficiente. Disponible: ${item.stock % 1 == 0 ? item.stock.toInt() : item.stock}',
+          AppColors.warning);
       return;
     }
 
     setState(() {
-      item.quantity = double.parse(newQuantity.toStringAsFixed(item.unidadMedida.decimalesPermitidos));
+      item.quantity = double.parse(
+          newQuantity.toStringAsFixed(item.unidadMedida.decimalesPermitidos));
     });
   }
 
@@ -760,12 +798,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     final client = _selectedClient!;
 
     final parts = client.identificacion.split('-');
-    final rifTypeController = TextEditingController(text: parts.isNotEmpty ? parts[0] : 'V');
-    final rifNumberController = TextEditingController(text: parts.length > 1 ? parts.sublist(1).join('-') : client.identificacion);
+    final rifTypeController =
+        TextEditingController(text: parts.isNotEmpty ? parts[0] : 'V');
+    final rifNumberController = TextEditingController(
+        text: parts.length > 1
+            ? parts.sublist(1).join('-')
+            : client.identificacion);
     final nameController = TextEditingController(text: client.nombre);
     final emailController = TextEditingController(text: client.correo ?? '');
     final phoneController = TextEditingController(text: client.telefono ?? '');
-    final addressController = TextEditingController(text: client.direccion ?? '');
+    final addressController =
+        TextEditingController(text: client.direccion ?? '');
     bool isRetentionAgent = client.agenteRetencion;
     bool isSaving = false;
     final formKey = GlobalKey<FormState>();
@@ -774,10 +817,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           child: Container(
             width: double.maxFinite,
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * 0.85),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -785,17 +830,25 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   padding: const EdgeInsets.all(20),
                   decoration: const BoxDecoration(
                     color: AppColors.primary,
-                    borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                    borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12)),
                   ),
                   child: Row(
                     children: [
                       const Icon(Icons.edit, color: Colors.white, size: 24),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child: Text('Editar Cliente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                        child: Text('Editar Cliente',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
                       ),
                       if (!isSaving)
-                        IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
+                        IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white),
+                            onPressed: () => Navigator.pop(ctx)),
                     ],
                   ),
                 ),
@@ -815,17 +868,28 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                   decoration: InputDecoration(
                                     labelText: 'Tipo',
                                     filled: true,
-                                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                    fillColor: isDark
+                                        ? AppColors.darkBackground
+                                        : AppColors.lightBackground,
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 16),
                                   ),
                                   items: const [
-                                    DropdownMenuItem(value: 'V', child: Text('V')),
-                                    DropdownMenuItem(value: 'E', child: Text('E')),
-                                    DropdownMenuItem(value: 'J', child: Text('J')),
-                                    DropdownMenuItem(value: 'G', child: Text('G')),
+                                    DropdownMenuItem(
+                                        value: 'V', child: Text('V')),
+                                    DropdownMenuItem(
+                                        value: 'E', child: Text('E')),
+                                    DropdownMenuItem(
+                                        value: 'J', child: Text('J')),
+                                    DropdownMenuItem(
+                                        value: 'G', child: Text('G')),
                                   ],
-                                  onChanged: isSaving ? null : (v) => rifTypeController.text = v ?? 'V',
+                                  onChanged: isSaving
+                                      ? null
+                                      : (v) =>
+                                          rifTypeController.text = v ?? 'V',
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -836,13 +900,18 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                   decoration: InputDecoration(
                                     labelText: 'RIF/Cédula',
                                     filled: true,
-                                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    fillColor: isDark
+                                        ? AppColors.darkBackground
+                                        : AppColors.lightBackground,
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
                                     prefixIcon: const Icon(Icons.badge),
                                   ),
                                   keyboardType: TextInputType.number,
                                   enabled: !isSaving,
-                                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
+                                  validator: (v) => v == null || v.isEmpty
+                                      ? 'Requerido'
+                                      : null,
                                 ),
                               ),
                             ],
@@ -853,13 +922,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             decoration: InputDecoration(
                               labelText: 'Nombre completo',
                               filled: true,
-                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              fillColor: isDark
+                                  ? AppColors.darkBackground
+                                  : AppColors.lightBackground,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
                               prefixIcon: const Icon(Icons.person),
                             ),
                             textCapitalization: TextCapitalization.characters,
                             enabled: !isSaving,
-                            validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
+                            validator: (v) =>
+                                v == null || v.isEmpty ? 'Requerido' : null,
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -867,8 +940,11 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             decoration: InputDecoration(
                               labelText: 'Dirección',
                               filled: true,
-                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              fillColor: isDark
+                                  ? AppColors.darkBackground
+                                  : AppColors.lightBackground,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
                               prefixIcon: const Icon(Icons.location_on),
                             ),
                             textCapitalization: TextCapitalization.words,
@@ -881,8 +957,11 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             decoration: InputDecoration(
                               labelText: 'Teléfono (opcional)',
                               filled: true,
-                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              fillColor: isDark
+                                  ? AppColors.darkBackground
+                                  : AppColors.lightBackground,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
                               prefixIcon: const Icon(Icons.phone),
                               hintText: 'Ej: 0414-1234567',
                             ),
@@ -895,8 +974,11 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             decoration: InputDecoration(
                               labelText: 'Email',
                               filled: true,
-                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              fillColor: isDark
+                                  ? AppColors.darkBackground
+                                  : AppColors.lightBackground,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
                               prefixIcon: const Icon(Icons.email),
                             ),
                             keyboardType: TextInputType.emailAddress,
@@ -907,7 +989,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             title: const Text('Agente de Retención'),
                             value: isRetentionAgent,
                             enabled: !isSaving,
-                            onChanged: (v) => setDialogState(() => isRetentionAgent = v ?? false),
+                            onChanged: (v) => setDialogState(
+                                () => isRetentionAgent = v ?? false),
                           ),
                         ],
                       ),
@@ -920,46 +1003,65 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       if (!isSaving)
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancelar')),
                       const SizedBox(width: 12),
                       ElevatedButton(
-                        onPressed: isSaving ? null : () async {
-                          if (formKey.currentState!.validate()) {
-                            setDialogState(() => isSaving = true);
-                            try {
-                              final identificacion = '${rifTypeController.text}-${rifNumberController.text}';
-                              await DbHelper.instance.actualizarCliente(client.id!, {
-                                'identificacion': identificacion,
-                                'nombre': nameController.text.trim(),
-                                'correo': emailController.text.trim(),
-                                'telefono': phoneController.text.trim(),
-                                'direccion': addressController.text.trim(),
-                                'agente_retencion': isRetentionAgent ? 1 : 0,
-                              });
-                              setState(() {
-                                _selectedClient = ClientModel(
-                                  id: client.id,
-                                  identificacion: identificacion,
-                                  nombre: nameController.text.trim(),
-                                  correo: emailController.text.trim(),
-                                  telefono: phoneController.text.trim(),
-                                  direccion: addressController.text.trim(),
-                                  agenteRetencion: isRetentionAgent,
-                                );
-                              });
-                              if (ctx.mounted) {
-                                Navigator.pop(ctx);
-                                _showSnackBar('Cliente actualizado', AppColors.success);
-                              }
-                            } catch (e) {
-                              setDialogState(() => isSaving = false);
-                              if (ctx.mounted) _showSnackBar('Error al actualizar: $e', AppColors.error);
-                            }
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                        onPressed: isSaving
+                            ? null
+                            : () async {
+                                if (formKey.currentState!.validate()) {
+                                  setDialogState(() => isSaving = true);
+                                  try {
+                                    final identificacion =
+                                        '${rifTypeController.text}-${rifNumberController.text}';
+                                    await DbHelper.instance
+                                        .actualizarCliente(client.id!, {
+                                      'identificacion': identificacion,
+                                      'nombre': nameController.text.trim(),
+                                      'correo': emailController.text.trim(),
+                                      'telefono': phoneController.text.trim(),
+                                      'direccion':
+                                          addressController.text.trim(),
+                                      'agente_retencion':
+                                          isRetentionAgent ? 1 : 0,
+                                    });
+                                    setState(() {
+                                      _selectedClient = ClientModel(
+                                        id: client.id,
+                                        identificacion: identificacion,
+                                        nombre: nameController.text.trim(),
+                                        correo: emailController.text.trim(),
+                                        telefono: phoneController.text.trim(),
+                                        direccion:
+                                            addressController.text.trim(),
+                                        agenteRetencion: isRetentionAgent,
+                                      );
+                                    });
+                                    if (ctx.mounted) {
+                                      Navigator.pop(ctx);
+                                      _showSnackBar('Cliente actualizado',
+                                          AppColors.success);
+                                    }
+                                  } catch (e) {
+                                    setDialogState(() => isSaving = false);
+                                    if (ctx.mounted) {
+                                      _showSnackBar('Error al actualizar: $e',
+                                          AppColors.error);
+                                    }
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white),
                         child: isSaving
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
                             : const Text('Guardar'),
                       ),
                     ],
@@ -993,8 +1095,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         content: Text(message),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        duration: topPosition 
-            ? const Duration(milliseconds: 1200) 
+        duration: topPosition
+            ? const Duration(milliseconds: 1200)
             : const Duration(seconds: 2),
         margin: topPosition
             ? EdgeInsets.only(
@@ -1027,13 +1129,13 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     } catch (e) {
       debugPrint('❌ Error procesando pago: $e');
       _showSnackBar('Error procesando pago: $e', AppColors.error);
-      
+
       // Liberar el botón después de un error
       if (mounted) {
         setState(() => _isProcessingPayment = false);
       }
     }
-    
+
     // IMPORTANTE: NO usar finally aquí porque los métodos internos
     // pueden mostrar diálogos con await, y el finally se ejecutaría
     // antes de que el usuario cierre el diálogo.
@@ -1043,19 +1145,19 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   /// Procesar pago con tarjeta usando Ubii POS
   Future<void> _processCardPayment() async {
     debugPrint('💳 Iniciando pago con tarjeta - Ubii POS');
-    
+
     // Para pagos con tarjeta, se envía el monto en Bolívares
     final montoEnBs = _total * _exchangeRate;
-    
+
     debugPrint('💰 Monto USD: \$${_total.toStringAsFixed(2)}');
     debugPrint('💰 Monto Bs: Bs ${montoEnBs.toStringAsFixed(2)}');
     debugPrint('💰 Tasa: ${_exchangeRate.toStringAsFixed(2)}');
-    
+
     // NOTA: El monto se pasa en Bolívares para pagos con tarjeta.
     // El servicio UbiiPosService.formatAmount() lo formatea automáticamente
     // al formato requerido por Ubii (sin punto decimal, 2 decimales fijos)
     // Ejemplo: 1500.50 -> "150050"
-    
+
     // Mostrar diálogo de carga
     showDialog(
       context: context,
@@ -1109,17 +1211,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         debugPrint('   Referencia: ${resultado['reference']}');
         debugPrint('   Auth: ${resultado['authCode']}');
         debugPrint('   Tipo tarjeta: ${resultado['cardType']}');
-        
+
         if (mounted) {
           _showSnackBar(
             '✅ Pago aprobado! Ref: ${resultado['reference']}',
             AppColors.success,
           );
-          
+
           try {
             // Guardar factura en BD con datos de Ubii POS
             await _saveInvoice(ubiiData: resultado);
-            
+
             // 🖨️ Imprimir factura automáticamente en impresora térmica
             await _printInvoiceAutomatically(
               metodoPago: 'card',
@@ -1127,28 +1229,30 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
               authCode: resultado['authCode'],
               cardType: resultado['cardType'],
             );
-            
+
             // Mostrar diálogo de éxito
             _showSuccessDialog(resultado);
-            
+
             // Liberar botón después de mostrar diálogo de éxito
             setState(() => _isProcessingPayment = false);
           } catch (e) {
-            debugPrint('❌ Error guardando factura después de pago aprobado: $e');
+            debugPrint(
+                '❌ Error guardando factura después de pago aprobado: $e');
             // Mostrar error pero indicar que el pago SÍ fue procesado
             if (mounted) {
               await ErrorDialog.show(
                 context,
                 title: 'Pago Aprobado - Error al Guardar',
-                message: 'El pago fue aprobado por Ubii POS pero hubo un error al guardar la factura en la base de datos.',
+                message:
+                    'El pago fue aprobado por Ubii POS pero hubo un error al guardar la factura en la base de datos.',
                 errorCode: ErrorCodes.invoiceCreation,
                 technicalDetails: 'Error: $e\n'
-                                'Referencia: ${resultado['reference']}\n'
-                                'Auth: ${resultado['authCode']}\n'
-                                'IMPORTANTE: El pago SÍ fue procesado. Verifica el voucher del POS.',
+                    'Referencia: ${resultado['reference']}\n'
+                    'Auth: ${resultado['authCode']}\n'
+                    'IMPORTANTE: El pago SÍ fue procesado. Verifica el voucher del POS.',
               );
             }
-            
+
             // Liberar botón después de mostrar error
             if (mounted) {
               setState(() => _isProcessingPayment = false);
@@ -1160,23 +1264,23 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         // Esto significa que probablemente la transacción se procesó
         debugPrint('⚠️ Ubii POS no retornó datos');
         debugPrint('   Asumiendo transacción exitosa (el usuario no canceló)');
-        
+
         if (mounted) {
           _showSnackBar(
             '✅ Pago procesado. Verifica el voucher del POS.',
             AppColors.success,
           );
-          
+
           try {
             // Guardar factura sin datos de Ubii
             await _saveInvoice();
-            
+
             // 🖨️ Imprimir factura automáticamente
             await _printInvoiceAutomatically(metodoPago: 'card');
-            
+
             // Mostrar diálogo de éxito
             _showSuccessDialog(null);
-            
+
             // Liberar botón después de mostrar diálogo de éxito
             setState(() => _isProcessingPayment = false);
           } catch (e) {
@@ -1187,7 +1291,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 details: 'Error al guardar la factura:\n$e',
               );
             }
-            
+
             // Liberar botón después de mostrar error
             if (mounted) {
               setState(() => _isProcessingPayment = false);
@@ -1197,7 +1301,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       } else if (resultado['code'] == 'CANCELLED') {
         // Usuario canceló la transacción
         debugPrint('⚠️ Transacción cancelada por el usuario');
-        
+
         if (mounted) {
           _showSnackBar(
             'Transacción cancelada',
@@ -1209,7 +1313,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         // Error de comunicación o app no instalada
         final mensaje = resultado['message'] ?? 'Error desconocido';
         debugPrint('❌ Error: $mensaje');
-        
+
         if (mounted) {
           _showSnackBar(
             mensaje,
@@ -1221,7 +1325,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         // ❌ RECHAZADA o ERROR
         final mensaje = resultado['message'] ?? 'Transacción rechazada';
         debugPrint('❌ Pago rechazado: $mensaje');
-        
+
         if (mounted) {
           await ErrorDialog.show(
             context,
@@ -1229,9 +1333,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             message: mensaje,
             errorCode: ErrorCodes.ubiiPayment,
             technicalDetails: 'Código: ${resultado['code']}\n'
-                            'Terminal: ${resultado['terminal']}\n'
-                            'Lote: ${resultado['lote']}\n'
-                            'Monto: \$${_total.toStringAsFixed(2)}',
+                'Terminal: ${resultado['terminal']}\n'
+                'Lote: ${resultado['lote']}\n'
+                'Monto: \$${_total.toStringAsFixed(2)}',
           );
           setState(() => _isProcessingPayment = false);
         }
@@ -1239,14 +1343,14 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     } catch (e) {
       // Cerrar diálogo de carga si está abierto
       if (mounted) Navigator.pop(context);
-      
+
       debugPrint('❌ Error en pago con tarjeta: $e');
       if (mounted) {
         await ErrorDialog.genericError(
           context,
           message: 'Ocurrió un error al procesar el pago con tarjeta',
           details: 'Error: $e\n'
-                  'Monto: \$${_total.toStringAsFixed(2)}',
+              'Monto: \$${_total.toStringAsFixed(2)}',
         );
       }
     }
@@ -1255,29 +1359,29 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   /// Procesar otros métodos de pago (efectivo, pago móvil, etc.)
   Future<void> _processOtherPayment() async {
     debugPrint('💰 Procesando pago: $_selectedPaymentMethod');
-    
+
     // Si es Pago Móvil, usar la integración con Ubii
     if (_selectedPaymentMethod == 'pago_movil') {
       await _processPagoMovil();
       return;
     }
-    
+
     // Para otros métodos (efectivo, débito inmediato), simular procesamiento
     await Future.delayed(const Duration(seconds: 1));
-    
+
     if (mounted) {
       _showSnackBar(
         'Pago procesado exitosamente ($_selectedPaymentMethod)',
         AppColors.success,
       );
-      
+
       try {
         // Guardar factura en BD
         await _saveInvoice();
-        
+
         // 🖨️ Imprimir factura automáticamente
         await _printInvoiceAutomatically(metodoPago: _selectedPaymentMethod);
-        
+
         _showSuccessDialog(null);
         setState(() => _isProcessingPayment = false);
       } catch (e) {
@@ -1286,11 +1390,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           await ErrorDialog.show(
             context,
             title: 'Error al Guardar Factura',
-            message: 'El pago fue procesado pero hubo un error al guardar la factura en la base de datos.',
+            message:
+                'El pago fue procesado pero hubo un error al guardar la factura en la base de datos.',
             errorCode: ErrorCodes.invoiceCreation,
             technicalDetails: 'Error: $e\n'
-                            'Método de pago: $_selectedPaymentMethod\n'
-                            'Monto: \${_total.toStringAsFixed(2)}',
+                'Método de pago: $_selectedPaymentMethod\n'
+                'Monto: \${_total.toStringAsFixed(2)}',
           );
         }
         if (mounted) {
@@ -1303,14 +1408,14 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   /// Procesar Pago Móvil usando Ubii API
   Future<void> _processPagoMovil() async {
     debugPrint('📱 Iniciando Pago Móvil - Ubii API');
-    
+
     // Calcular monto en Bolívares
     final montoEnBs = _total * _exchangeRate;
-    
+
     debugPrint('💰 Monto USD: \$${_total.toStringAsFixed(2)}');
     debugPrint('💰 Monto Bs: Bs ${montoEnBs.toStringAsFixed(2)}');
     debugPrint('💰 Tasa: ${_exchangeRate.toStringAsFixed(2)}');
-    
+
     try {
       // Abrir pantalla de Pago Móvil
       final transaction = await Navigator.push<PagoMovilTransaction>(
@@ -1321,20 +1426,21 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           ),
         ),
       );
-      
+
       // Verificar si el pago fue aprobado
-      if (transaction != null && transaction.status == PagoMovilStatus.approved) {
+      if (transaction != null &&
+          transaction.status == PagoMovilStatus.approved) {
         debugPrint('✅ Pago Móvil aprobado');
         debugPrint('   Referencia: ${transaction.referencia}');
         debugPrint('   Orden: ${transaction.orderNumber}');
         debugPrint('   Banco: ${transaction.bankAba}');
-        
+
         if (mounted) {
           _showSnackBar(
             '✅ Pago Móvil aprobado! Ref: ${transaction.referencia}',
             AppColors.success,
           );
-          
+
           try {
             // Guardar factura con referencia del Pago Móvil
             await _saveInvoice(
@@ -1345,28 +1451,30 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 'telefono': transaction.phoneCliente,
               },
             );
-            
+
             // 🖨️ Imprimir factura automáticamente
             await _printInvoiceAutomatically(
               metodoPago: 'pago_movil',
               referencia: transaction.referencia,
             );
-            
+
             _showSuccessDialog(null);
             setState(() => _isProcessingPayment = false);
           } catch (e) {
-            debugPrint('❌ Error guardando factura después de Pago Móvil aprobado: $e');
+            debugPrint(
+                '❌ Error guardando factura después de Pago Móvil aprobado: $e');
             if (mounted) {
               await ErrorDialog.show(
                 context,
                 title: 'Pago Móvil Aprobado - Error al Guardar',
-                message: 'El Pago Móvil fue aprobado pero hubo un error al guardar la factura en la base de datos.',
+                message:
+                    'El Pago Móvil fue aprobado pero hubo un error al guardar la factura en la base de datos.',
                 errorCode: ErrorCodes.invoiceCreation,
                 technicalDetails: 'Error: $e\n'
-                                'Referencia: ${transaction.referencia}\n'
-                                'Orden: ${transaction.orderNumber}\n'
-                                'Banco: ${transaction.bankAba}\n'
-                                'IMPORTANTE: El pago SÍ fue procesado.',
+                    'Referencia: ${transaction.referencia}\n'
+                    'Orden: ${transaction.orderNumber}\n'
+                    'Banco: ${transaction.bankAba}\n'
+                    'IMPORTANTE: El pago SÍ fue procesado.',
               );
             }
             if (mounted) {
@@ -1376,28 +1484,30 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         }
       } else if (transaction != null) {
         // Pago no aprobado (rechazado, timeout, error)
-        debugPrint('❌ Pago Móvil no aprobado: ${transaction.status.displayName}');
-        
+        debugPrint(
+            '❌ Pago Móvil no aprobado: ${transaction.status.displayName}');
+
         if (mounted) {
           await ErrorDialog.show(
             context,
             title: 'Pago Móvil ${transaction.status.displayName}',
-            message: transaction.errorMessage ?? 'El pago no fue aprobado. Verifica los datos e intenta nuevamente.',
+            message: transaction.errorMessage ??
+                'El pago no fue aprobado. Verifica los datos e intenta nuevamente.',
             errorCode: ErrorCodes.pagoMovilInvalid,
             technicalDetails: 'Referencia: ${transaction.referencia}\n'
-                            'Banco: ${transaction.bankAba}\n'
-                            'Teléfono: ${transaction.phoneCliente}\n'
-                            'Monto: Bs. ${transaction.monto.toStringAsFixed(2)}\n'
-                            'Estado: ${transaction.status.displayName}\n'
-                            'Código: ${transaction.responseCode}\n'
-                            'Mensaje: ${transaction.responseMessage}',
+                'Banco: ${transaction.bankAba}\n'
+                'Teléfono: ${transaction.phoneCliente}\n'
+                'Monto: Bs. ${transaction.monto.toStringAsFixed(2)}\n'
+                'Estado: ${transaction.status.displayName}\n'
+                'Código: ${transaction.responseCode}\n'
+                'Mensaje: ${transaction.responseMessage}',
           );
           setState(() => _isProcessingPayment = false);
         }
       } else {
         // Usuario canceló o cerró la pantalla
         debugPrint('⚠️ Pago Móvil cancelado por el usuario');
-        
+
         if (mounted) {
           CustomSnackBar.warning(context, 'Pago Móvil cancelado');
           setState(() => _isProcessingPayment = false);
@@ -1410,7 +1520,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           context,
           message: 'Ocurrió un error al procesar el Pago Móvil',
           details: 'Error: $e\n'
-                  'Monto: Bs. ${(_total * _exchangeRate).toStringAsFixed(2)}',
+              'Monto: Bs. ${(_total * _exchangeRate).toStringAsFixed(2)}',
         );
       }
     }
@@ -1423,31 +1533,41 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
   }) async {
     try {
       debugPrint('💾 Guardando factura en BD...');
-      
+
       // Obtener ID del usuario actual (por ahora usamos 1, el admin)
       const int usuarioId = 1;
-      
+
+      // Obtener sesión fiscal activa
+      final fiscalProvider =
+          Provider.of<FiscalProvider>(context, listen: false);
+      final sesion = fiscalProvider.sesionActual;
+      final int? sesionFiscalId = sesion?.id;
+
+      // Generar el siguiente número correlativo fiscal
+      final String numeroControlFiscal =
+          await FiscalService.instance.generarNumeroFactura();
+
       // Calcular montos
       final montoUsd = _total;
       final montoBs = _total * _exchangeRate;
-      
+
       // ==================== CÁLCULOS FISCALES ====================
       // Calcular base imponible (subtotal sin IVA)
       final baseImponible = _subtotal;
-      
+
       // Calcular monto de IVA (16%)
       final montoIva = _iva;
-      
+
       // Tipo de documento fiscal (por defecto "Factura")
       const tipoDocumento = 'Factura';
-      
+
       debugPrint('📊 Cálculos fiscales:');
       debugPrint('   Base imponible: \$${baseImponible.toStringAsFixed(2)}');
       debugPrint('   IVA (16%): \$${montoIva.toStringAsFixed(2)}');
       debugPrint('   Total: \$${_total.toStringAsFixed(2)}');
       debugPrint('   Tipo documento: $tipoDocumento');
       // =========================================================
-      
+
       // Preparar referencia de pago
       String? referenciaPago;
       if (pagoMovilData != null) {
@@ -1457,7 +1577,7 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         // Para otros métodos, usar la referencia manual
         referenciaPago = _paymentReferenceController.text.trim();
       }
-      
+
       // Preparar detalles de la factura
       final detalles = _cart.map((item) {
         return {
@@ -1467,11 +1587,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           'subtotal': item.price * item.quantity,
         };
       }).toList();
-      
+
       // Guardar factura
       final facturaId = await DbHelper.instance.crearFactura(
         clienteId: _selectedClient!.id ?? 0,
         usuarioId: usuarioId,
+        numeroControl: numeroControlFiscal,
         baseImponible: _baseImponible,
         montoIva: _iva,
         retencionIva: _retencionIVA,
@@ -1490,34 +1611,41 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         ubiiLote: ubiiData?['lote'],
         ubiiResponseCode: ubiiData?['code'],
         ubiiResponseMessage: ubiiData?['message'],
+        sesionFiscalId: sesionFiscalId,
+        tasaIva: 16.0,
+        montoExento: _montoExento,
+        montoBaseImponible: _baseImponible,
       );
-      
+
+      setState(() {
+        _ultimoNumeroControl = numeroControlFiscal;
+      });
+
       debugPrint('✅ Factura guardada con ID: $facturaId');
       debugPrint('   Cliente: ${_selectedClient!.nombre}');
       debugPrint('   Método: $_selectedPaymentMethod');
       debugPrint('   Total USD: \$${montoUsd.toStringAsFixed(2)}');
       debugPrint('   Total Bs: Bs ${montoBs.toStringAsFixed(2)}');
-      
+
       if (ubiiData != null) {
         debugPrint('   Ubii Ref: ${ubiiData['reference']}');
         debugPrint('   Ubii Auth: ${ubiiData['authCode']}');
       }
-      
+
       if (pagoMovilData != null) {
         debugPrint('   Pago Móvil Ref: ${pagoMovilData['referencia']}');
         debugPrint('   Pago Móvil Orden: ${pagoMovilData['orderNumber']}');
         debugPrint('   Pago Móvil Banco: ${pagoMovilData['banco']}');
       }
-      
     } catch (e) {
       debugPrint('❌ Error guardando factura: $e');
       if (mounted) {
         await ErrorDialog.databaseError(
           context,
           details: 'Error al guardar la factura en la base de datos:\n$e\n\n'
-                  'Cliente: ${_selectedClient?.nombre}\n'
-                  'Total: \$${_total.toStringAsFixed(2)}\n'
-                  'Método: $_selectedPaymentMethod',
+              'Cliente: ${_selectedClient?.nombre}\n'
+              'Total: \$${_total.toStringAsFixed(2)}\n'
+              'Método: $_selectedPaymentMethod',
         );
       }
       rethrow;
@@ -1552,8 +1680,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
         };
       }).toList();
 
-      // Número de factura (timestamp si no hay otro identificador)
-      final invoiceNumber = 'FAC-${DateTime.now().millisecondsSinceEpoch}';
+      // Número de factura (usar el correlativo fiscal)
+      final invoiceNumber =
+          _ultimoNumeroControl ?? '${DateTime.now().millisecondsSinceEpoch}';
 
       final success = await ThermalPrinterService.printInvoice(
         invoiceNumber: invoiceNumber,
@@ -1576,7 +1705,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       if (success) {
         debugPrint('✅ Factura impresa correctamente');
         if (mounted) {
-          _showSnackBar('🖨️ Factura impresa', AppColors.success, topPosition: true);
+          _showSnackBar('🖨️ Factura impresa', AppColors.success,
+              topPosition: true);
         }
       } else {
         debugPrint('⚠️ La impresión no se completó');
@@ -1605,25 +1735,25 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       // Limpiar cliente
       _selectedClient = null;
       _rifSearchController.clear();
-      
+
       // Limpiar carrito
       _cart.clear();
-      
+
       // Limpiar método de pago
       _selectedPaymentMethod = null;
       _paymentReferenceController.clear();
-      
+
       // Volver al paso de creación
       _step = 'creation';
     });
-    
+
     debugPrint('✅ Formulario limpiado - Listo para nueva factura');
   }
 
   /// Mostrar diálogo de éxito
   void _showSuccessDialog(Map<String, dynamic>? ubiiData) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1655,7 +1785,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 CurrencyFormatter.formatUSD(_total),
                 style: TextStyle(
                   fontSize: 14,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
               ),
               const SizedBox(height: 16),
@@ -1667,7 +1799,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1687,14 +1821,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.info_outline, color: AppColors.info, size: 20),
+                      const Icon(Icons.info_outline,
+                          color: AppColors.info, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Verifica el voucher impreso en el POS para confirmar la transacción.',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                         ),
                       ),
@@ -1724,10 +1861,6 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-
-
-
-
   Widget _buildInfoRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1750,9 +1883,105 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
+  Widget _buildBlockedStep(bool isDark) {
+    return Scaffold(
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      appBar: AppBar(
+        title: const Text('Nueva Factura'),
+        backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+      ),
+      body: Column(
+        children: [
+          const EstadoFiscalBanner(),
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline_rounded,
+                        size: 80,
+                        color: Colors.redAccent,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Facturación Bloqueada',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No se pueden emitir facturas ni notas de crédito porque no existe una sesión fiscal abierta para el día de hoy.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/apertura-fiscal');
+                      },
+                      icon: const Icon(Icons.vpn_key_rounded),
+                      label: const Text('Realizar Apertura Fiscal'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fiscalProvider = context.watch<FiscalProvider>();
+
+    if (fiscalProvider.isLoading) {
+      return Scaffold(
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (!fiscalProvider.haySesionAbierta) {
+      return _buildBlockedStep(isDark);
+    }
 
     if (_step == 'payment') {
       return _buildPaymentStep(isDark);
@@ -1763,7 +1992,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
 
   Widget _buildCreationStep(bool isDark) {
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         title: const Text('Nueva Factura'),
         backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
@@ -1774,7 +2004,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
               context: context,
               builder: (context) => AlertDialog(
                 title: const Text('Cancelar factura'),
-                content: const Text('¿Desea salir? Se perderán los datos ingresados.'),
+                content: const Text(
+                    '¿Desea salir? Se perderán los datos ingresados.'),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -1796,17 +2027,22 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
             child: GestureDetector(
-              onTap: _isRefreshingRate ? null : () async {
-                setState(() => _isRefreshingRate = true);
-                await ExchangeRateService.updateRates();
-                await _loadExchangeRate();
-                if (!mounted) return;
-                setState(() => _isRefreshingRate = false);
-                final now = DateTime.now();
-                final fecha = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
-                _showSnackBar('Tasa actualizada — $fecha', AppColors.success, topPosition: false);
-                await Future.delayed(const Duration(seconds: 1));
-              },
+              onTap: _isRefreshingRate
+                  ? null
+                  : () async {
+                      setState(() => _isRefreshingRate = true);
+                      await ExchangeRateService.updateRates();
+                      await _loadExchangeRate();
+                      if (!mounted) return;
+                      setState(() => _isRefreshingRate = false);
+                      final now = DateTime.now();
+                      final fecha =
+                          '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+                      _showSnackBar(
+                          'Tasa actualizada — $fecha', AppColors.success,
+                          topPosition: false);
+                      await Future.delayed(const Duration(seconds: 1));
+                    },
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1819,7 +2055,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             color: AppColors.primary,
                           ),
                         )
-                      : const Icon(Icons.attach_money, size: 18, color: AppColors.primary),
+                      : const Icon(Icons.attach_money,
+                          size: 18, color: AppColors.primary),
                   Text(
                     _exchangeRate.toStringAsFixed(2),
                     style: const TextStyle(
@@ -1840,7 +2077,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
+                padding: const EdgeInsets.only(
+                    left: 16, right: 16, top: 16, bottom: 100),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1860,11 +2098,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-
   Widget _buildBottomCobrarButton(bool isDark) {
     final hasItems = _cart.isNotEmpty;
     final hasClient = _selectedClient != null;
-    final canProceed = hasItems && hasClient;
+    final hasFiscalSession =
+        Provider.of<FiscalProvider>(context).haySesionAbierta;
+    final canProceed = hasItems && hasClient && hasFiscalSession;
 
     return Container(
       decoration: BoxDecoration(
@@ -1916,9 +2155,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   if (_cart.isNotEmpty) ...[
                     const SizedBox(width: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: canProceed ? Colors.white.withValues(alpha: 0.2) : Colors.grey[400],
+                        color: canProceed
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : Colors.grey[400],
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1967,10 +2209,13 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                  color: isDark
+                      ? AppColors.darkBackground
+                      : AppColors.lightBackground,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    color:
+                        isDark ? AppColors.darkBorder : AppColors.lightBorder,
                   ),
                 ),
                 child: DropdownButtonHideUnderline(
@@ -1997,12 +2242,15 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   decoration: InputDecoration(
                     hintText: 'Número de RIF o Cédula',
                     filled: true,
-                    fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                    fillColor: isDark
+                        ? AppColors.darkBackground
+                        : AppColors.lightBackground,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     suffixIcon: _isSearchingClient
                         ? const Padding(
                             padding: EdgeInsets.all(12),
@@ -2035,62 +2283,64 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
             GestureDetector(
               onDoubleTap: () => _showEditClientDialog(isDark),
               child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.success.withValues(alpha: 0.3),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.success.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle,
+                        color: AppColors.success, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _selectedClient!.nombre,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'RIF/CÉDULA: ${_selectedClient!.identificacion}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        setState(() {
+                          _selectedClient = null;
+                          _rifSearchController.clear();
+                        });
+                      },
+                      tooltip: 'Quitar cliente',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: AppColors.success, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _selectedClient!.nombre,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'RIF/CÉDULA: ${_selectedClient!.identificacion}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () {
-                      setState(() {
-                        _selectedClient = null;
-                        _rifSearchController.clear();
-                      });
-                    },
-                    tooltip: 'Quitar cliente',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-            ),
             ),
           ],
         ],
       ),
     );
   }
-
 
   Widget _buildProductsSection(bool isDark) {
     return Container(
@@ -2124,37 +2374,44 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       'Desliza ← para eliminar',
                       style: TextStyle(
                         fontSize: 10,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
                 ],
               ),
               TextButton(
-                onPressed: _isLoadingProducts ? null : () async {
-                  // Cargar productos ANTES de abrir el modal
-                  if (_availableProducts.isEmpty && !_isLoadingProducts) {
-                    await _loadProducts();
-                  }
-                  
-                  if (mounted) {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (context) => _buildProductModal(isDark),
-                    );
-                  }
-                },
+                onPressed: (_isLoadingProducts ||
+                        !Provider.of<FiscalProvider>(context, listen: false)
+                            .haySesionAbierta)
+                    ? null
+                    : () async {
+                        // Cargar productos ANTES de abrir el modal
+                        if (_availableProducts.isEmpty && !_isLoadingProducts) {
+                          await _loadProducts();
+                        }
+
+                        if (mounted) {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (context) => _buildProductModal(isDark),
+                          );
+                        }
+                      },
                 style: TextButton.styleFrom(
                   side: BorderSide(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    color:
+                        isDark ? AppColors.darkBorder : AppColors.lightBorder,
                     width: 1,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: _isLoadingProducts 
+                child: _isLoadingProducts
                     ? const SizedBox(
                         width: 16,
                         height: 16,
@@ -2173,13 +2430,17 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     Icon(
                       Icons.shopping_cart_outlined,
                       size: 40,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'No hay items agregados',
                       style: TextStyle(
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
                     ),
                   ],
@@ -2212,27 +2473,28 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       ),
       confirmDismiss: (direction) async {
         return await showDialog<bool>(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Eliminar producto'),
-              content: Text('¿Desea eliminar "${item.name}" del carrito?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text(
-                    'Eliminar',
-                    style: TextStyle(color: AppColors.error),
-                  ),
-                ),
-              ],
-            );
-          },
-        ) ?? false;
+              context: context,
+              builder: (BuildContext context) {
+                return AlertDialog(
+                  title: const Text('Eliminar producto'),
+                  content: Text('¿Desea eliminar "${item.name}" del carrito?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancelar'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text(
+                        'Eliminar',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ) ??
+            false;
       },
       onDismissed: (direction) {
         _removeFromCart(item.id);
@@ -2264,12 +2526,13 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    color: isDark 
+                    color: isDark
                         ? AppColors.darkCard.withValues(alpha: 0.5)
                         : AppColors.lightCard,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color:
+                          isDark ? AppColors.darkBorder : AppColors.lightBorder,
                     ),
                   ),
                   child: Row(
@@ -2308,7 +2571,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      CurrencyFormatter.formatBS(item.price * item.quantity, _exchangeRate),
+                      CurrencyFormatter.formatBS(
+                          item.price * item.quantity, _exchangeRate),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -2328,7 +2592,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 Icon(
                   Icons.drag_indicator,
                   size: 18,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
               ],
             ),
@@ -2337,7 +2603,6 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
       ),
     );
   }
-
 
   Widget _buildTotalsSection(bool isDark) {
     return Container(
@@ -2354,19 +2619,22 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           // Mostrar Base Imponible (productos con IVA)
           if (_baseImponible > 0)
             _buildTotalRow('Base Imponible (G)', _baseImponible, false, isDark),
-          
+
           // Mostrar IVA solo si hay base imponible
           if (_baseImponible > 0)
             _buildTotalRow('IVA 16%', _iva, false, isDark),
-          
+
           // Mostrar Monto Exento (productos sin IVA)
           if (_montoExento > 0)
             _buildTotalRow('Monto Exento (E)', _montoExento, false, isDark),
-          
+
           // Mostrar Retención de IVA si aplica
-          if (_selectedClient != null && _selectedClient!.agenteRetencion && _retencionIVA > 0)
-            _buildTotalRow('Retención IVA (75%)', -_retencionIVA, false, isDark, isRetention: true),
-          
+          if (_selectedClient != null &&
+              _selectedClient!.agenteRetencion &&
+              _retencionIVA > 0)
+            _buildTotalRow('Retención IVA (75%)', -_retencionIVA, false, isDark,
+                isRetention: true),
+
           // Nota informativa para agentes de retención
           if (_selectedClient != null && _selectedClient!.agenteRetencion)
             Padding(
@@ -2376,7 +2644,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                   Icon(
                     Icons.info_outline,
                     size: 14,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
                   const SizedBox(width: 4),
                   Expanded(
@@ -2384,7 +2654,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       'Cliente Agente de Retención - Se aplica retención del 75% sobre el IVA',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -2399,7 +2671,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-  Widget _buildTotalRow(String label, double value, bool isFinal, bool isDark, {bool isRetention = false}) {
+  Widget _buildTotalRow(String label, double value, bool isFinal, bool isDark,
+      {bool isRetention = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -2423,7 +2696,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     style: TextStyle(
                       fontSize: isFinal ? 24 : 16,
                       fontWeight: FontWeight.bold,
-                      color: isRetention ? AppColors.info : AppColors.successDark,
+                      color:
+                          isRetention ? AppColors.info : AppColors.successDark,
                     ),
                   ),
                   Text(
@@ -2431,7 +2705,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                     style: TextStyle(
                       fontSize: isFinal ? 14 : 12,
                       fontWeight: FontWeight.w500,
-                      color: isRetention ? AppColors.info : AppColors.successDark,
+                      color:
+                          isRetention ? AppColors.info : AppColors.successDark,
                     ),
                   ),
                 ],
@@ -2483,13 +2758,16 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             decoration: InputDecoration(
                               hintText: 'Buscar por código o nombre...',
                               filled: true,
-                              fillColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                              fillColor: isDark
+                                  ? AppColors.darkBackground
+                                  : AppColors.lightBackground,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide.none,
                               ),
                               prefixIcon: const Icon(Icons.search),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
                             ),
                             textInputAction: TextInputAction.search,
                             onChanged: (value) {
@@ -2502,11 +2780,14 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                         const SizedBox(width: 8),
                         Container(
                           decoration: BoxDecoration(
-                            color: isDark ? AppColors.darkPrimary : AppColors.primary,
+                            color: isDark
+                                ? AppColors.darkPrimary
+                                : AppColors.primary,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.refresh, color: Colors.white),
+                            icon:
+                                const Icon(Icons.refresh, color: Colors.white),
                             onPressed: () async {
                               setModalState(() {
                                 _productSearchController.clear();
@@ -2533,7 +2814,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                 Icon(
                                   Icons.inventory_2_outlined,
                                   size: 48,
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
@@ -2541,10 +2824,13 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                       ? 'No hay productos disponibles'
                                       : 'No se encontraron productos',
                                   style: TextStyle(
-                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                    color: isDark
+                                        ? AppColors.darkTextSecondary
+                                        : AppColors.lightTextSecondary,
                                   ),
                                 ),
-                                if (_productSearchController.text.isNotEmpty) ...[
+                                if (_productSearchController
+                                    .text.isNotEmpty) ...[
                                   const SizedBox(height: 8),
                                   TextButton.icon(
                                     onPressed: () {
@@ -2565,17 +2851,20 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             itemBuilder: (context, index) {
                               final product = _filteredProducts[index];
-                              final isInCart = _cart.any((item) => item.id == product.id);
-                              
+                              final isInCart =
+                                  _cart.any((item) => item.id == product.id);
+
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 8),
                                   leading: Container(
                                     width: 50,
                                     height: 50,
                                     decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(alpha: 0.1),
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Icon(
@@ -2593,21 +2882,25 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const SizedBox(height: 4),
                                       Text(
                                         'Código: ${product.code}',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                          color: isDark
+                                              ? AppColors.darkTextSecondary
+                                              : AppColors.lightTextSecondary,
                                         ),
                                       ),
                                       const SizedBox(height: 2),
                                       Row(
                                         children: [
                                           Text(
-                                            CurrencyFormatter.formatUSD(product.price),
+                                            CurrencyFormatter.formatUSD(
+                                                product.price),
                                             style: const TextStyle(
                                               fontSize: 14,
                                               fontWeight: FontWeight.bold,
@@ -2616,19 +2909,25 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                           ),
                                           const SizedBox(width: 8),
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
                                             decoration: BoxDecoration(
                                               color: product.stock > 10
-                                                  ? AppColors.success.withValues(alpha: 0.1)
-                                                  : AppColors.warning.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(4),
+                                                  ? AppColors.success
+                                                      .withValues(alpha: 0.1)
+                                                  : AppColors.warning
+                                                      .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                             ),
                                             child: Text(
                                               'Stock: ${product.stock % 1 == 0 ? product.stock.toInt() : product.stock}',
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
-                                                color: product.stock > 10 ? AppColors.success : AppColors.warning,
+                                                color: product.stock > 10
+                                                    ? AppColors.success
+                                                    : AppColors.warning,
                                               ),
                                             ),
                                           ),
@@ -2642,7 +2941,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                                           color: AppColors.success,
                                         )
                                       : IconButton(
-                                          icon: const Icon(Icons.add_shopping_cart),
+                                          icon: const Icon(
+                                              Icons.add_shopping_cart),
                                           color: AppColors.primary,
                                           onPressed: () => _addToCart(product),
                                         ),
@@ -2659,10 +2959,10 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-
   Widget _buildPaymentStep(bool isDark) {
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
         title: const Text('Cobro'),
         backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
@@ -2702,7 +3002,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       'Monto a Cobrar',
                       style: TextStyle(
                         fontSize: 16,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2724,7 +3026,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2739,7 +3043,6 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              
               const Text(
                 'Método de Pago',
                 style: TextStyle(
@@ -2753,9 +3056,12 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _buildPaymentMethod('cash', 'Efectivo', Icons.money, AppColors.success, isDark),
-                  _buildPaymentMethod('card', 'Tarjeta', Icons.credit_card, AppColors.info, isDark),
-                  _buildPaymentMethod('pago_movil', 'Pago Móvil', Icons.phone_android, AppColors.primary, isDark),
+                  _buildPaymentMethod('cash', 'Efectivo', Icons.money,
+                      AppColors.success, isDark),
+                  _buildPaymentMethod('card', 'Tarjeta', Icons.credit_card,
+                      AppColors.info, isDark),
+                  _buildPaymentMethod('pago_movil', 'Pago Móvil',
+                      Icons.phone_android, AppColors.primary, isDark),
                 ],
               ),
               const SizedBox(height: 100),
@@ -2797,7 +3103,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isProcessingPayment ? Colors.grey : AppColors.success,
+                backgroundColor:
+                    _isProcessingPayment ? Colors.grey : AppColors.success,
                 foregroundColor: AppColors.textLight,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -2810,9 +3117,10 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
     );
   }
 
-  Widget _buildPaymentMethod(String id, String label, IconData icon, Color color, bool isDark) {
+  Widget _buildPaymentMethod(
+      String id, String label, IconData icon, Color color, bool isDark) {
     final isSelected = _selectedPaymentMethod == id;
-    
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -2828,7 +3136,9 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
           color: isDark ? AppColors.darkCard : AppColors.lightCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? AppColors.primary : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+            color: isSelected
+                ? AppColors.primary
+                : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -2862,7 +3172,8 @@ class _CreateDocumentScreenState extends State<CreateDocumentScreen> {
 
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
     return TextEditingValue(
       text: newValue.text.toUpperCase(),
       selection: newValue.selection,

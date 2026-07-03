@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/connectivity_service.dart';
 import '../services/sync_trigger.dart';
 import '../enums/sync_status.dart';
-import '../../DATABASE/db_helper.dart';
+import '../../database/db_helper.dart';
 
 /// Gestor central de sincronización.
 /// - Al iniciar: push pendientes locales + pull completo desde Supabase.
@@ -56,6 +56,7 @@ class SyncManager {
   /// Orden respetando dependencias FK:
   ///   usuarios → clientes → productos → existencias
   ///   → factura → factura_detalle → cierres_lote
+  ///   → nota_credito → nota_credito_detalle → nota_credito_motivo
   Future<void> pullAll() async {
     if (!ConnectivityService.instance.isOnline) return;
     debugPrint('⬇️ Pull: descargando cambios desde Supabase...');
@@ -63,9 +64,21 @@ class SyncManager {
     await _pullTable('clientes',        uniqueCol: 'identificacion');
     await _pullTable('productos',       uniqueCol: 'cod_articulo');
     await _pullExistencias(); // especial: resuelve producto_id local por cod_articulo
+    
+    // Descargar sesiones fiscales antes de las facturas (FK)
+    await _pullTable('sesiones_fiscales', uniqueCol: 'numero_sesion');
+    
     await _pullTable('factura',         uniqueCol: 'numero_control');
     await _pullFacturaDetalle(); // especial: resuelve factura_id y producto_id locales
     await _pullTable('cierres_lote');
+    
+    // Descargar reportes de cierre y secuencias
+    await _pullTable('reportes_cierre', uniqueCol: 'numero_reporte');
+    await _pullTable('secuencias_documentos', uniqueCol: 'tipo_documento');
+    
+    await _pullTable('nota_credito_motivo', uniqueCol: 'codigo'); // catálogo primero
+    await _pullNotaCredito(); // especial: resuelve factura_id local
+    await _pullNotaCreditoDetalle(); // especial: resuelve nota_credito_id y producto_id locales
     debugPrint('✅ Pull completado');
   }
 
@@ -361,6 +374,226 @@ class SyncManager {
       }
     } catch (e) {
       debugPrint('❌ [factura_detalle] Error en pull: $e');
+    }
+  }
+
+  /// Pull especial para nota_credito.
+  /// Resuelve factura_id local por numero_control de la factura.
+  Future<void> _pullNotaCredito() async {
+    try {
+      final db = await DbHelper.instance.database;
+
+      final remoteRows = await Supabase.instance.client
+          .from('nota_credito')
+          .select()
+          .order('last_modified', ascending: false);
+
+      int inserted = 0;
+      int updated = 0;
+
+      for (final remoteRow in remoteRows) {
+        final serverId = remoteRow['server_id'] as String?;
+        if (serverId == null) continue;
+
+        // Buscar en local por server_id primero
+        List<Map<String, dynamic>> localRows = await db.query(
+          'nota_credito',
+          where: 'server_id = ?',
+          whereArgs: [serverId],
+          limit: 1,
+        );
+
+        // Si no encontró, buscar por numero_control
+        if (localRows.isEmpty) {
+          final numeroControl = remoteRow['numero_control'] as String?;
+          if (numeroControl != null) {
+            localRows = await db.query(
+              'nota_credito',
+              where: 'numero_control = ?',
+              whereArgs: [numeroControl],
+              limit: 1,
+            );
+          }
+        }
+
+        // Resolver factura_id local por numero_control de la factura
+        final facturaNumeroControl = remoteRow['factura_numero_control'] as String?;
+        int? localFacturaId;
+
+        if (facturaNumeroControl != null) {
+          final facturaRows = await db.query(
+            'factura',
+            columns: ['id'],
+            where: 'numero_control = ?',
+            whereArgs: [facturaNumeroControl],
+            limit: 1,
+          );
+          if (facturaRows.isNotEmpty) {
+            localFacturaId = facturaRows.first['id'] as int;
+          }
+        }
+
+        // Fallback: usar factura_id del remoto si coincide
+        if (localFacturaId == null) {
+          final remoteFacturaId = remoteRow['factura_id'];
+          if (remoteFacturaId != null) {
+            final facturaRows = await db.query(
+              'factura',
+              columns: ['id'],
+              where: 'id = ?',
+              whereArgs: [remoteFacturaId],
+              limit: 1,
+            );
+            if (facturaRows.isNotEmpty) {
+              localFacturaId = facturaRows.first['id'] as int;
+            }
+          }
+        }
+
+        if (localFacturaId == null) {
+          debugPrint('⚠️ [nota_credito] Factura no encontrada en local, omitiendo');
+          continue;
+        }
+
+        final localRow = _remoteToLocal(remoteRow);
+        localRow['factura_id'] = localFacturaId;
+
+        if (localRows.isEmpty) {
+          await db.insert(
+            'nota_credito',
+            {...localRow, 'sync_status': SyncStatus.synced.toInt()},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          inserted++;
+        } else {
+          final localTs = DateTime.tryParse(
+                  localRows.first['last_modified'] as String? ?? '') ??
+              DateTime(2000);
+          final remoteTs =
+              DateTime.tryParse(remoteRow['last_modified'] as String? ?? '') ??
+                  DateTime(2000);
+
+          if (remoteTs.isAfter(localTs)) {
+            await db.update(
+              'nota_credito',
+              {...localRow, 'sync_status': SyncStatus.synced.toInt()},
+              where: 'server_id = ?',
+              whereArgs: [serverId],
+            );
+            updated++;
+          }
+        }
+      }
+
+      if (inserted > 0 || updated > 0) {
+        debugPrint('📥 [nota_credito] Pull: $inserted nuevos, $updated actualizados');
+      }
+    } catch (e) {
+      debugPrint('❌ [nota_credito] Error en pull: $e');
+    }
+  }
+
+  /// Pull especial para nota_credito_detalle.
+  /// Resuelve nota_credito_id y producto_id locales.
+  Future<void> _pullNotaCreditoDetalle() async {
+    try {
+      final db = await DbHelper.instance.database;
+
+      final remoteRows = await Supabase.instance.client
+          .from('nota_credito_detalle')
+          .select()
+          .order('last_modified', ascending: false);
+
+      int inserted = 0;
+
+      for (final remoteRow in remoteRows) {
+        final serverId = remoteRow['server_id'] as String?;
+        if (serverId == null) continue;
+
+        // Si ya existe en local, saltar
+        final existing = await db.query(
+          'nota_credito_detalle',
+          where: 'server_id = ?',
+          whereArgs: [serverId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) continue;
+
+        // Resolver nota_credito_id local por server_id de la nota de crédito
+        final notaCreditoServerId = remoteRow['nota_credito_server_id'] as String?;
+        int? localNotaCreditoId;
+
+        if (notaCreditoServerId != null) {
+          final notaCreditoRows = await db.query(
+            'nota_credito',
+            columns: ['id'],
+            where: 'server_id = ?',
+            whereArgs: [notaCreditoServerId],
+            limit: 1,
+          );
+          if (notaCreditoRows.isNotEmpty) {
+            localNotaCreditoId = notaCreditoRows.first['id'] as int;
+          }
+        }
+
+        // Fallback: buscar por nota_credito_id si coincide
+        if (localNotaCreditoId == null) {
+          final remoteNotaCreditoId = remoteRow['nota_credito_id'];
+          if (remoteNotaCreditoId != null) {
+            final notaCreditoRows = await db.query(
+              'nota_credito',
+              columns: ['id'],
+              where: 'id = ?',
+              whereArgs: [remoteNotaCreditoId],
+              limit: 1,
+            );
+            if (notaCreditoRows.isNotEmpty) {
+              localNotaCreditoId = notaCreditoRows.first['id'] as int;
+            }
+          }
+        }
+
+        if (localNotaCreditoId == null) {
+          debugPrint('⚠️ [nota_credito_detalle] Nota de crédito no encontrada en local, omitiendo');
+          continue;
+        }
+
+        // Resolver producto_id local
+        final remoteProductoId = remoteRow['producto_id'] as int?;
+        int? localProductoId = remoteProductoId; // fallback
+
+        // Verificar que el producto existe localmente
+        if (remoteProductoId != null) {
+          final productoRows = await db.query(
+            'productos',
+            columns: ['id'],
+            where: 'id = ?',
+            whereArgs: [remoteProductoId],
+            limit: 1,
+          );
+          if (productoRows.isEmpty) {
+            debugPrint('⚠️ [nota_credito_detalle] Producto id=$remoteProductoId no encontrado, omitiendo');
+            continue;
+          }
+        }
+
+        final localRow = _remoteToLocal(remoteRow);
+        localRow['nota_credito_id'] = localNotaCreditoId;
+        localRow['producto_id'] = localProductoId;
+
+        await db.insert(
+          'nota_credito_detalle',
+          {...localRow, 'sync_status': SyncStatus.synced.toInt()},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+        inserted++;
+      }
+
+      if (inserted > 0) {
+        debugPrint('📥 [nota_credito_detalle] Pull: $inserted nuevos');
+      }
+    } catch (e) {
+      debugPrint('❌ [nota_credito_detalle] Error en pull: $e');
     }
   }
 

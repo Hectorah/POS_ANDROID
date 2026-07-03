@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../DATABASE/db_helper.dart';
+import '../../database/db_helper.dart';
 import '../enums/sync_status.dart';
 
 /// Escucha cambios en Supabase en tiempo real y los aplica en SQLite local.

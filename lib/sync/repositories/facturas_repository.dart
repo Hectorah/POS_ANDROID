@@ -1,5 +1,5 @@
 import 'package:sqflite/sqflite.dart';
-import '../../DATABASE/db_helper.dart';
+import '../../database/db_helper.dart';
 import '../enums/sync_status.dart';
 import '../models/syncable_model.dart';
 import 'base_repository.dart';
@@ -33,6 +33,10 @@ class FacturaSync extends SyncableModel {
   final String? ubiiResponseCode;
   final String? ubiiResponseMessage;
   final String estado;
+  final int? sesionFiscalId;
+  final double tasaIva;
+  final double montoExento;
+  final double? montoBaseImponible;
 
   const FacturaSync({
     this.id,
@@ -59,6 +63,10 @@ class FacturaSync extends SyncableModel {
     this.ubiiResponseCode,
     this.ubiiResponseMessage,
     this.estado = 'activo',
+    this.sesionFiscalId,
+    this.tasaIva = 16.0,
+    this.montoExento = 0.0,
+    this.montoBaseImponible,
     super.serverId,
     required super.lastModified,
     required super.syncStatus,
@@ -90,6 +98,10 @@ class FacturaSync extends SyncableModel {
         'ubii_response_code': ubiiResponseCode,
         'ubii_response_message': ubiiResponseMessage,
         'estado': estado,
+        'sesion_fiscal_id': sesionFiscalId,
+        'tasa_iva': tasaIva,
+        'monto_exento': montoExento,
+        'monto_base_imponible': montoBaseImponible ?? baseImponible,
         ...syncLocalFields,
       };
 
@@ -118,6 +130,10 @@ class FacturaSync extends SyncableModel {
         'ubii_response_code': ubiiResponseCode,
         'ubii_response_message': ubiiResponseMessage,
         'estado': estado,
+        'sesion_fiscal_id': sesionFiscalId,
+        'tasa_iva': tasaIva,
+        'monto_exento': montoExento,
+        'monto_base_imponible': montoBaseImponible ?? baseImponible,
         ...syncRemoteFields,
       };
 
@@ -146,6 +162,10 @@ class FacturaSync extends SyncableModel {
         ubiiResponseCode: m['ubii_response_code'] as String?,
         ubiiResponseMessage: m['ubii_response_message'] as String?,
         estado: m['estado'] as String? ?? 'activo',
+        sesionFiscalId: m['sesion_fiscal_id'] as int?,
+        tasaIva: (m['tasa_iva'] as num?)?.toDouble() ?? 16.0,
+        montoExento: (m['monto_exento'] as num?)?.toDouble() ?? 0.0,
+        montoBaseImponible: (m['monto_base_imponible'] as num?)?.toDouble(),
         serverId: m['server_id'] as String?,
         lastModified: SyncableModel.parseLastModified(m),
         syncStatus: SyncStatus.fromInt(m['sync_status'] as int?),
@@ -185,6 +205,10 @@ class FacturaSync extends SyncableModel {
         ubiiResponseCode: ubiiResponseCode,
         ubiiResponseMessage: ubiiResponseMessage,
         estado: estado,
+        sesionFiscalId: sesionFiscalId,
+        tasaIva: tasaIva,
+        montoExento: montoExento,
+        montoBaseImponible: montoBaseImponible,
         serverId: serverId ?? this.serverId,
         lastModified: lastModified ?? this.lastModified,
         syncStatus: syncStatus ?? this.syncStatus,

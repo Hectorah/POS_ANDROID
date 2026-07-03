@@ -1,4 +1,4 @@
-import '../../DATABASE/db_helper.dart';
+import '../../database/db_helper.dart';
 import '../enums/sync_status.dart';
 import '../models/syncable_model.dart';
 import 'base_repository.dart';

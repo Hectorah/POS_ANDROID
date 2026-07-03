@@ -139,6 +139,7 @@ class CustomSnackBar {
   static void info(BuildContext context, String message) {
     show(context, message: message, type: SnackBarType.info);
   }
+
 }
 
 // ============================================================================

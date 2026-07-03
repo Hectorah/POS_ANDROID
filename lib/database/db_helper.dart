@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import '../core/app_config.dart';
 import '../sync/services/sync_trigger.dart';
+import 'nota_credito_tables.dart';
 
 class DbHelper {
   // Patrón Singleton: Una única instancia para toda la app
@@ -18,28 +19,27 @@ class DbHelper {
   static Future<void> initialize() async {
     try {
       debugPrint('🗄️ Inicializando base de datos...');
-      
+
       // Esto forzará la creación de la BD si no existe
       await instance.database;
-      
+
       // Verificar que el usuario admin existe
       final adminExists = await instance._verificarAdminExiste();
-      
+
       if (!adminExists) {
         debugPrint('⚠️ Usuario admin no encontrado, creando...');
         await instance._crearUsuarioAdmin();
       }
-      
+
       debugPrint('✅ Base de datos inicializada correctamente');
       debugPrint('📊 Ubicación: ${await getDatabasesPath()}');
-      
+
       // Mostrar estadísticas
       final stats = await instance.obtenerEstadisticas();
       debugPrint('📈 Estadísticas:');
       debugPrint('   - Productos: ${stats['productos']}');
       debugPrint('   - Clientes: ${stats['clientes']}');
       debugPrint('   - Facturas: ${stats['facturas']}');
-      
     } catch (e) {
       debugPrint('❌ Error inicializando base de datos: $e');
       rethrow;
@@ -69,7 +69,7 @@ class DbHelper {
       // Contraseña por defecto para desarrollo (cambiar en producción)
       const defaultPassword = '1';
       final adminPassword = _hashPassword(defaultPassword);
-      
+
       await db.insert('usuarios', {
         'nombre': 'Administrador',
         'usuario': 'admin',
@@ -77,10 +77,355 @@ class DbHelper {
         'nivel': 'administrador',
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
-      
+
       debugPrint('✅ Usuario admin creado');
     } catch (e) {
       debugPrint('❌ Error creando usuario admin: $e');
+    }
+  }
+
+  /// Asegura que todas las tablas y relaciones requeridas por el sistema
+  /// (incluyendo sesiones fiscales, arqueos de caja, reportes de cierre y notas de crédito)
+  /// existan en la base de datos local utilizando 'CREATE TABLE IF NOT EXISTS'.
+  Future<void> _asegurarTablasExistentes(Database db) async {
+    try {
+      debugPrint('🛠️ Asegurando existencia de tablas del sistema...');
+
+      // 1. Crear tabla sesiones_fiscales
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sesiones_fiscales (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id TEXT,
+          numero_sesion TEXT NOT NULL UNIQUE,
+          fecha_apertura TEXT NOT NULL,
+          fecha_cierre TEXT,
+          usuario_apertura_id INTEGER NOT NULL,
+          usuario_apertura_nombre TEXT NOT NULL,
+          usuario_cierre_id INTEGER,
+          usuario_cierre_nombre TEXT,
+          estado TEXT NOT NULL DEFAULT 'ABIERTA' CHECK(estado IN ('ABIERTA', 'CERRADA')),
+          total_ventas REAL NOT NULL DEFAULT 0,
+          total_notas_credito REAL NOT NULL DEFAULT 0,
+          total_efectivo REAL NOT NULL DEFAULT 0,
+          total_tarjeta REAL NOT NULL DEFAULT 0,
+          total_pago_movil REAL NOT NULL DEFAULT 0,
+          total_otros_metodos REAL NOT NULL DEFAULT 0,
+          total_base_imponible REAL NOT NULL DEFAULT 0,
+          total_iva REAL NOT NULL DEFAULT 0,
+          total_exento REAL NOT NULL DEFAULT 0,
+          total_general REAL NOT NULL DEFAULT 0,
+          cantidad_facturas INTEGER NOT NULL DEFAULT 0,
+          cantidad_notas_credito INTEGER NOT NULL DEFAULT 0,
+          cantidad_transacciones INTEGER NOT NULL DEFAULT 0,
+          factura_inicial TEXT,
+          factura_final TEXT,
+          nc_inicial TEXT,
+          nc_final TEXT,
+          arqueo_realizado INTEGER NOT NULL DEFAULT 0,
+          arqueo_id INTEGER,
+          fondo_caja_inicial REAL NOT NULL DEFAULT 0,
+          last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          sync_status INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+
+      // 2. Crear tabla arqueos_caja
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS arqueos_caja (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id TEXT,
+          sesion_fiscal_id INTEGER NOT NULL,
+          numero_arqueo TEXT NOT NULL UNIQUE,
+          fecha_arqueo TEXT NOT NULL,
+          usuario_arqueo_id INTEGER NOT NULL,
+          usuario_arqueo_nombre TEXT NOT NULL,
+          billete_100_usd INTEGER NOT NULL DEFAULT 0,
+          billete_50_usd INTEGER NOT NULL DEFAULT 0,
+          billete_20_usd INTEGER NOT NULL DEFAULT 0,
+          billete_10_usd INTEGER NOT NULL DEFAULT 0,
+          billete_5_usd INTEGER NOT NULL DEFAULT 0,
+          billete_1_usd INTEGER NOT NULL DEFAULT 0,
+          billete_100_bs INTEGER NOT NULL DEFAULT 0,
+          billete_50_bs INTEGER NOT NULL DEFAULT 0,
+          billete_20_bs INTEGER NOT NULL DEFAULT 0,
+          billete_10_bs INTEGER NOT NULL DEFAULT 0,
+          billete_5_bs INTEGER NOT NULL DEFAULT 0,
+          moneda_1_usd INTEGER NOT NULL DEFAULT 0,
+          moneda_050_usd INTEGER NOT NULL DEFAULT 0,
+          moneda_025_usd INTEGER NOT NULL DEFAULT 0,
+          moneda_010_usd INTEGER NOT NULL DEFAULT 0,
+          moneda_005_usd INTEGER NOT NULL DEFAULT 0,
+          moneda_001_usd INTEGER NOT NULL DEFAULT 0,
+          efectivo_bs REAL NOT NULL DEFAULT 0,
+          efectivo_usd REAL NOT NULL DEFAULT 0,
+          efectivo_eur REAL NOT NULL DEFAULT 0,
+          efectivo_cop REAL NOT NULL DEFAULT 0,
+          total_efectivo_usd REAL NOT NULL DEFAULT 0,
+          total_efectivo_bs REAL NOT NULL DEFAULT 0,
+          total_efectivo_eur REAL NOT NULL DEFAULT 0,
+          total_efectivo_cop REAL NOT NULL DEFAULT 0,
+          total_tarjeta_declarado REAL NOT NULL DEFAULT 0,
+          total_pago_movil_declarado REAL NOT NULL DEFAULT 0,
+          total_otros_declarado REAL NOT NULL DEFAULT 0,
+          total_efectivo_sistema REAL NOT NULL DEFAULT 0,
+          total_tarjeta_sistema REAL NOT NULL DEFAULT 0,
+          total_pago_movil_sistema REAL NOT NULL DEFAULT 0,
+          total_otros_sistema REAL NOT NULL DEFAULT 0,
+          diferencia_efectivo REAL NOT NULL DEFAULT 0,
+          diferencia_tarjeta REAL NOT NULL DEFAULT 0,
+          diferencia_pago_movil REAL NOT NULL DEFAULT 0,
+          diferencia_total REAL NOT NULL DEFAULT 0,
+          cuadrado INTEGER NOT NULL DEFAULT 0,
+          observaciones TEXT,
+          fondo_caja_inicial REAL NOT NULL DEFAULT 0,
+          last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          sync_status INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (sesion_fiscal_id) REFERENCES sesiones_fiscales(id)
+        )
+      ''');
+
+      // 3. Crear tabla reportes_cierre
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS reportes_cierre (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id TEXT,
+          sesion_fiscal_id INTEGER NOT NULL,
+          numero_reporte TEXT NOT NULL UNIQUE,
+          fecha_reporte TEXT NOT NULL,
+          facturas_emitidas INTEGER NOT NULL DEFAULT 0,
+          notas_credito_emitidas INTEGER NOT NULL DEFAULT 0,
+          total_ventas REAL NOT NULL DEFAULT 0,
+          total_notas_credito REAL NOT NULL DEFAULT 0,
+          total_neto REAL NOT NULL DEFAULT 0,
+          iva_16 REAL NOT NULL DEFAULT 0,
+          iva_8 REAL NOT NULL DEFAULT 0,
+          iva_total REAL NOT NULL DEFAULT 0,
+          exento REAL NOT NULL DEFAULT 0,
+          desglose_efectivo REAL NOT NULL DEFAULT 0,
+          desglose_tarjeta REAL NOT NULL DEFAULT 0,
+          desglose_pago_movil REAL NOT NULL DEFAULT 0,
+          desglose_otros REAL NOT NULL DEFAULT 0,
+          rif_comercio TEXT NOT NULL,
+          nombre_comercio TEXT NOT NULL,
+          direccion_comercio TEXT NOT NULL,
+          hash_integridad TEXT,
+          seniat_sync_id TEXT,
+          seniat_sync_fecha TEXT,
+          seniat_sync_estado TEXT DEFAULT 'PENDIENTE' CHECK(seniat_sync_estado IN ('PENDIENTE', 'ENVIADO', 'APROBADO', 'RECHAZADO')),
+          last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          sync_status INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (sesion_fiscal_id) REFERENCES sesiones_fiscales(id)
+        )
+      ''');
+
+      // 4. Crear tabla secuencias_documentos
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS secuencias_documentos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id TEXT,
+          tipo_documento TEXT NOT NULL UNIQUE CHECK(tipo_documento IN ('FACTURA', 'NOTA_CREDITO')),
+          prefijo TEXT NOT NULL,
+          ultimo_numero INTEGER NOT NULL DEFAULT 0,
+          reinicio_diario INTEGER NOT NULL DEFAULT 0,
+          last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          sync_status INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+
+      // 5. Crear tablas de Nota de Crédito usando la clase helper
+      for (final statement in NotaCreditoTables.allCreateStatements) {
+        String safeStatement = statement;
+        if (statement.trim().toUpperCase().startsWith('CREATE TABLE')) {
+          safeStatement = statement.replaceFirst(
+              RegExp('CREATE TABLE', caseSensitive: false),
+              'CREATE TABLE IF NOT EXISTS');
+        } else if (statement.trim().toUpperCase().startsWith('CREATE INDEX')) {
+          safeStatement = statement.replaceFirst(
+              RegExp('CREATE INDEX', caseSensitive: false),
+              'CREATE INDEX IF NOT EXISTS');
+        }
+        await db.execute(safeStatement);
+      }
+
+      // 6. Sembrar motivos predefinidos si la tabla está vacía
+      final countResult = await db
+          .rawQuery('SELECT COUNT(*) as count FROM nota_credito_motivo');
+      final count = Sqflite.firstIntValue(countResult) ?? 0;
+      if (count == 0) {
+        debugPrint('🌱 Sembrando motivos de nota de crédito predefinidos...');
+        for (final query in NotaCreditoTables.insertPredefinedMotivos) {
+          await db.execute(query);
+        }
+        debugPrint('✅ Motivos predefinidos sembrados exitosamente');
+      }
+
+      debugPrint('✅ Todas las tablas requeridas están aseguradas');
+    } catch (e) {
+      debugPrint('❌ Error al asegurar tablas existentes: $e');
+      rethrow;
+    }
+  }
+
+  /// Método defensivo para asegurar que las columnas de sincronización existan
+  Future<void> _asegurarColumnasSincronizacionForDatabase(Database db) async {
+    try {
+      debugPrint('🔍 Verificando columnas de la base de datos...');
+
+      // Lista de columnas a verificar (tabla, columna, tipo)
+      final columnasAsegurar = [
+        {
+          'tabla': 'reportes_cierre',
+          'col': 'sync_status',
+          'sql':
+              'ALTER TABLE reportes_cierre ADD COLUMN sync_status INTEGER NOT NULL DEFAULT 1'
+        },
+        {
+          'tabla': 'nota_credito_motivo',
+          'col': 'last_modified',
+          'sql': 'ALTER TABLE nota_credito_motivo ADD COLUMN last_modified TEXT'
+        },
+        {
+          'tabla': 'nota_credito_motivo',
+          'col': 'sync_status',
+          'sql':
+              'ALTER TABLE nota_credito_motivo ADD COLUMN sync_status INTEGER NOT NULL DEFAULT 1'
+        },
+        {
+          'tabla': 'sesiones_fiscales',
+          'col': 'arqueo_realizado',
+          'sql':
+              'ALTER TABLE sesiones_fiscales ADD COLUMN arqueo_realizado INTEGER DEFAULT 0'
+        },
+        {
+          'tabla': 'sesiones_fiscales',
+          'col': 'arqueo_id',
+          'sql':
+              'ALTER TABLE sesiones_fiscales ADD COLUMN arqueo_id INTEGER REFERENCES arqueos_caja(id)'
+        },
+        {
+          'tabla': 'sesiones_fiscales',
+          'col': 'fondo_caja_inicial',
+          'sql':
+              'ALTER TABLE sesiones_fiscales ADD COLUMN fondo_caja_inicial REAL DEFAULT 0'
+        },
+        {
+          'tabla': 'sesiones_fiscales',
+          'col': 'created_at',
+          'sql':
+              'ALTER TABLE sesiones_fiscales ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+        {
+          'tabla': 'sesiones_fiscales',
+          'col': 'updated_at',
+          'sql':
+              'ALTER TABLE sesiones_fiscales ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'created_at',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'updated_at',
+          'sql': 'ALTER TABLE arqueos_caja ADD COLUMN updated_at TEXT'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'efectivo_bs',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN efectivo_bs REAL NOT NULL DEFAULT 0'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'efectivo_usd',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN efectivo_usd REAL NOT NULL DEFAULT 0'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'efectivo_eur',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN efectivo_eur REAL NOT NULL DEFAULT 0'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'efectivo_cop',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN efectivo_cop REAL NOT NULL DEFAULT 0'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'total_efectivo_eur',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN total_efectivo_eur REAL NOT NULL DEFAULT 0'
+        },
+        {
+          'tabla': 'arqueos_caja',
+          'col': 'total_efectivo_cop',
+          'sql':
+              'ALTER TABLE arqueos_caja ADD COLUMN total_efectivo_cop REAL NOT NULL DEFAULT 0'
+        },
+        {
+          'tabla': 'reportes_cierre',
+          'col': 'created_at',
+          'sql':
+              'ALTER TABLE reportes_cierre ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+        {
+          'tabla': 'reportes_cierre',
+          'col': 'updated_at',
+          'sql':
+              'ALTER TABLE reportes_cierre ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+        {
+          'tabla': 'secuencias_documentos',
+          'col': 'created_at',
+          'sql':
+              'ALTER TABLE secuencias_documentos ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+        {
+          'tabla': 'secuencias_documentos',
+          'col': 'updated_at',
+          'sql':
+              'ALTER TABLE secuencias_documentos ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP'
+        },
+      ];
+
+      for (var item in columnasAsegurar) {
+        try {
+          final columns =
+              await db.rawQuery('PRAGMA table_info(${item['tabla']})');
+          final exists = columns.any((c) => c['name'] == item['col']);
+
+          if (!exists) {
+            await db.execute(item['sql']!);
+
+            // Si la columna es updated_at, inicializarla
+            if (item['col'] == 'updated_at') {
+              await db.execute(
+                  "UPDATE ${item['tabla']} SET updated_at = datetime('now') WHERE updated_at IS NULL");
+            }
+
+            debugPrint(
+                '✅ Columna ${item['col']} agregada exitosamente a ${item['tabla']}');
+          }
+        } catch (e) {
+          debugPrint(
+              '❌ Error al procesar columna ${item['col']} en ${item['tabla']}: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error general en _asegurarColumnasSincronizacion: $e');
     }
   }
 
@@ -95,13 +440,19 @@ class DbHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
-      version: 13, // v13: índice único en existencias.producto_id para evitar duplicados
+      version:
+          20, // v20: Agregar columnas fiscales a tabla factura y eliminar total_gastos/gastos_diarios
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
     );
+
+    await _asegurarTablasExistentes(db);
+    await _asegurarColumnasSincronizacionForDatabase(db);
+
+    return db;
   }
 
   // Habilitar el soporte para llaves foráneas (Relaciones entre tablas)
@@ -115,44 +466,46 @@ class DbHelper {
     final hash = sha256.convert(bytes);
     return hash.toString();
   }
-  
+
   // ============================================================================
   // MÉTODOS PARA NÚMERO DE CONTROL FISCAL
   // ============================================================================
-  
+
   /// Formatear número de control con el formato estándar: 00-0000001
-  /// 
+  ///
   /// Parámetros:
   /// - [numero]: Número secuencial (1, 2, 3, ...)
   /// - [prefijo]: Prefijo del número de control (por defecto "00")
   /// - [digitos]: Cantidad de dígitos para el número (por defecto 7)
-  /// 
+  ///
   /// Retorna: String en formato "00-0000001"
-  static String _formatearNumeroControl(int numero, {String prefijo = '00', int digitos = 7}) {
+  static String _formatearNumeroControl(int numero,
+      {String prefijo = '00', int digitos = 7}) {
     final numeroFormateado = numero.toString().padLeft(digitos, '0');
     return '$prefijo-$numeroFormateado';
   }
-  
+
   /// Generar el siguiente número de control disponible
-  /// 
+  ///
   /// Este método:
   /// 1. Consulta el último número de control usado
   /// 2. Incrementa en 1
   /// 3. Formatea con el estándar (00-0000001)
   /// 4. Valida que no exceda el rango autorizado
-  /// 
+  ///
   /// Retorna: String con el número de control generado
   /// Lanza: Exception si se excede el rango autorizado
-  Future<String> generarNumeroControl({String? prefijo, int? rangoMaximo}) async {
+  Future<String> generarNumeroControl(
+      {String? prefijo, int? rangoMaximo}) async {
     final db = await database;
-    
+
     // Usar configuración centralizada si no se especifican parámetros
     final prefijoFinal = prefijo ?? AppConfig.prefijoNumeroControl;
     final rangoMaximoFinal = rangoMaximo ?? AppConfig.rangoMaximoNumeroControl;
-    
+
     try {
       debugPrint('🔢 Generando número de control...');
-      
+
       // 1. Obtener el último número de control usado
       final result = await db.rawQuery('''
         SELECT numero_control 
@@ -161,41 +514,42 @@ class DbHelper {
         ORDER BY CAST(SUBSTR(numero_control, INSTR(numero_control, '-') + 1) AS INTEGER) DESC
         LIMIT 1
       ''');
-      
+
       int siguienteNumero = 1; // Por defecto, empezar en 1
-      
+
       if (result.isNotEmpty && result.first['numero_control'] != null) {
         // 2. Extraer el número del formato "00-0000001"
         final ultimoControl = result.first['numero_control'] as String;
         final partes = ultimoControl.split('-');
-        
+
         if (partes.length == 2) {
           final ultimoNumero = int.tryParse(partes[1]) ?? 0;
           siguienteNumero = ultimoNumero + 1;
-          
+
           debugPrint('   Último número de control: $ultimoControl');
           debugPrint('   Siguiente número: $siguienteNumero');
         }
       } else {
         debugPrint('   Primera factura - Iniciando en 1');
       }
-      
+
       // 3. Validar que no exceda el rango autorizado
       if (siguienteNumero > rangoMaximoFinal) {
         final mensaje = 'Rango de números de control agotado. '
-                       'Último número: ${_formatearNumeroControl(rangoMaximoFinal, prefijo: prefijoFinal)}. '
-                       'Solicite un nuevo rango al SENIAT.';
+            'Último número: ${_formatearNumeroControl(rangoMaximoFinal, prefijo: prefijoFinal)}. '
+            'Solicite un nuevo rango al SENIAT.';
         debugPrint('❌ $mensaje');
         throw Exception(mensaje);
       }
-      
+
       // 4. Alertar si quedan pocos números disponibles
       final restantes = rangoMaximoFinal - siguienteNumero;
       if (restantes <= AppConfig.umbralAlertaNumeroControl) {
-        debugPrint('⚠️ ALERTA: Solo quedan $restantes números de control disponibles');
+        debugPrint(
+            '⚠️ ALERTA: Solo quedan $restantes números de control disponibles');
         debugPrint('   Solicite un nuevo rango al SENIAT pronto');
       }
-      
+
       // 5. Verificar que el número generado no exista ya (defensa ante duplicados del pull)
       bool existe = true;
       while (existe) {
@@ -203,7 +557,9 @@ class DbHelper {
           'factura',
           columns: ['id'],
           where: 'numero_control = ?',
-          whereArgs: [_formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal)],
+          whereArgs: [
+            _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal)
+          ],
           limit: 1,
         );
         if (check.isEmpty) {
@@ -218,84 +574,88 @@ class DbHelper {
       }
 
       // 6. Formatear y retornar
-      final numeroControl = _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal);
+      final numeroControl =
+          _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal);
       debugPrint('✅ Número de control generado: $numeroControl');
 
       return numeroControl;
-      
     } catch (e) {
       debugPrint('❌ Error generando número de control: $e');
       rethrow;
     }
   }
-  
+
   /// Validar que la secuencia de números de control no tenga saltos
-  /// 
+  ///
   /// Este método verifica que todos los números de control sean consecutivos
   /// sin saltos ni duplicados.
-  /// 
+  ///
   /// Retorna: true si la secuencia es válida, false si hay saltos
   Future<bool> validarSecuenciaControl({String prefijo = '00'}) async {
     final db = await database;
-    
+
     try {
       debugPrint('🔍 Validando secuencia de números de control...');
-      
+
       final facturas = await db.rawQuery('''
         SELECT id, numero_control 
         FROM factura 
         WHERE numero_control IS NOT NULL
         ORDER BY id ASC
       ''');
-      
+
       if (facturas.isEmpty) {
         debugPrint('   No hay facturas para validar');
         return true;
       }
-      
+
       for (int i = 0; i < facturas.length; i++) {
         final control = facturas[i]['numero_control'] as String;
         final partes = control.split('-');
-        
+
         if (partes.length != 2 || partes[0] != prefijo) {
-          debugPrint('⚠️ Formato inválido en factura ${facturas[i]['id']}: $control');
+          debugPrint(
+              '⚠️ Formato inválido en factura ${facturas[i]['id']}: $control');
           return false;
         }
-        
+
         final numero = int.tryParse(partes[1]);
         if (numero == null) {
-          debugPrint('⚠️ Número inválido en factura ${facturas[i]['id']}: $control');
+          debugPrint(
+              '⚠️ Número inválido en factura ${facturas[i]['id']}: $control');
           return false;
         }
-        
+
         // Verificar que el número sea i + 1 (secuencia consecutiva)
         final numeroEsperado = i + 1;
         if (numero != numeroEsperado) {
           debugPrint('⚠️ Salto detectado en factura ${facturas[i]['id']}:');
-          debugPrint('   Esperado: ${_formatearNumeroControl(numeroEsperado, prefijo: prefijo)}');
+          debugPrint(
+              '   Esperado: ${_formatearNumeroControl(numeroEsperado, prefijo: prefijo)}');
           debugPrint('   Encontrado: $control');
           return false;
         }
       }
-      
-      debugPrint('✅ Secuencia de números de control válida (${facturas.length} facturas)');
+
+      debugPrint(
+          '✅ Secuencia de números de control válida (${facturas.length} facturas)');
       return true;
-      
     } catch (e) {
       debugPrint('❌ Error validando secuencia: $e');
       return false;
     }
   }
-  
+
   /// Obtener estadísticas de números de control
-  /// 
+  ///
   /// Retorna información sobre el uso de números de control:
   /// - Último número usado
   /// - Total de facturas
   /// - Números disponibles (si se especifica rango)
-  Future<Map<String, dynamic>> obtenerEstadisticasControl({int rangoMaximo = 9999999}) async {
+  Future<Map<String, dynamic>> obtenerEstadisticasControl(
+      {int rangoMaximo = 9999999}) async {
     final db = await database;
-    
+
     try {
       final result = await db.rawQuery('''
         SELECT 
@@ -304,13 +664,13 @@ class DbHelper {
         FROM factura 
         WHERE numero_control IS NOT NULL
       ''');
-      
+
       final totalFacturas = Sqflite.firstIntValue(await db.rawQuery(
-        'SELECT COUNT(*) FROM factura WHERE numero_control IS NOT NULL'
-      )) ?? 0;
-      
+              'SELECT COUNT(*) FROM factura WHERE numero_control IS NOT NULL')) ??
+          0;
+
       final ultimoControl = result.first['ultimo_control'] as String?;
-      
+
       int ultimoNumero = 0;
       if (ultimoControl != null) {
         final partes = ultimoControl.split('-');
@@ -318,20 +678,19 @@ class DbHelper {
           ultimoNumero = int.tryParse(partes[1]) ?? 0;
         }
       }
-      
+
       final disponibles = rangoMaximo - ultimoNumero;
-      
+
       return {
         'total_facturas': totalFacturas,
         'ultimo_control': ultimoControl ?? 'N/A',
         'ultimo_numero': ultimoNumero,
         'disponibles': disponibles,
         'rango_maximo': rangoMaximo,
-        'porcentaje_usado': totalFacturas > 0 
-            ? (ultimoNumero / rangoMaximo * 100).toStringAsFixed(2) 
+        'porcentaje_usado': totalFacturas > 0
+            ? (ultimoNumero / rangoMaximo * 100).toStringAsFixed(2)
             : '0.00',
       };
-      
     } catch (e) {
       debugPrint('❌ Error obteniendo estadísticas de control: $e');
       return {
@@ -445,6 +804,11 @@ class DbHelper {
         ubii_response_code $textNull,
         ubii_response_message $textNull,
         estado TEXT NOT NULL DEFAULT 'activo',
+        tiene_nota_credito INTEGER DEFAULT 0,
+        sesion_fiscal_id INTEGER REFERENCES sesiones_fiscales(id),
+        tasa_iva REAL DEFAULT 16.0,
+        monto_exento REAL DEFAULT 0,
+        monto_base_imponible REAL,
         server_id $textNull,
         last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         sync_status INTEGER NOT NULL DEFAULT 1,
@@ -497,11 +861,11 @@ class DbHelper {
     // INSERTAR USUARIO ADMINISTRADOR POR DEFECTO
     // ========================================================================
     debugPrint('🔐 Creando usuario administrador por defecto...');
-    
+
     // Contraseña por defecto para desarrollo (cambiar en producción)
     const defaultPassword = '1';
     final adminPassword = _hashPassword(defaultPassword);
-    
+
     await db.insert('usuarios', {
       'nombre': 'Administrador',
       'usuario': 'admin',
@@ -509,7 +873,7 @@ class DbHelper {
       'nivel': 'administrador',
       'fecha_creacion': DateTime.now().toIso8601String(),
     });
-    
+
     debugPrint('✅ Usuario admin creado exitosamente');
     debugPrint('   Usuario: admin');
     debugPrint('   Contraseña: 1');
@@ -518,7 +882,7 @@ class DbHelper {
     // INSERTAR CLIENTE POR DEFECTO
     // ========================================================================
     debugPrint('👤 Creando cliente por defecto...');
-    
+
     await db.insert('clientes', {
       'identificacion': 'V-00000000',
       'nombre': 'CLIENTE PRUEBA',
@@ -528,7 +892,7 @@ class DbHelper {
       'agente_retencion': 0,
       'fecha_creacion': DateTime.now().toIso8601String(),
     });
-    
+
     debugPrint('✅ Cliente por defecto creado');
     debugPrint('   Identificación: V-00000000');
     debugPrint('   Nombre: CLIENTE GENERICO');
@@ -541,7 +905,8 @@ class DbHelper {
     // Migración v12 a v13: índice único en existencias.producto_id
     // Elimina duplicados y previene que se vuelvan a crear.
     if (oldVersion < 13) {
-      debugPrint('📝 Limpiando duplicados en existencias y creando índice único...');
+      debugPrint(
+          '📝 Limpiando duplicados en existencias y creando índice único...');
       try {
         // 1. Eliminar filas duplicadas, conservando la de mayor stock
         await db.execute('''
@@ -625,26 +990,27 @@ class DbHelper {
     // Migración de versión 8 a 9: Agregar campo telefono a clientes
     if (oldVersion < 9) {
       debugPrint('📝 Agregando campo telefono a tabla clientes...');
-      
+
       try {
         // Agregar campo telefono
         await db.execute('ALTER TABLE clientes ADD COLUMN telefono TEXT');
-        
+
         debugPrint('✅ Campo telefono agregado exitosamente');
         debugPrint('   - telefono: Número de teléfono del cliente (opcional)');
       } catch (e) {
         debugPrint('⚠️ Error agregando campo telefono: $e');
       }
     }
-    
+
     // Migración de versión 7 a 8: Agregar campo tipo_impuesto a productos
     if (oldVersion < 8) {
       debugPrint('📝 Agregando campo tipo_impuesto a tabla productos...');
-      
+
       try {
         // Agregar campo tipo_impuesto (E=Exento, G=General 16%)
-        await db.execute('ALTER TABLE productos ADD COLUMN tipo_impuesto TEXT NOT NULL DEFAULT "G"');
-        
+        await db.execute(
+            'ALTER TABLE productos ADD COLUMN tipo_impuesto TEXT NOT NULL DEFAULT "G"');
+
         debugPrint('✅ Campo tipo_impuesto agregado exitosamente');
         debugPrint('   - E: Exento (productos sin IVA)');
         debugPrint('   - G: General (IVA 16%)');
@@ -652,30 +1018,35 @@ class DbHelper {
         debugPrint('⚠️ Error agregando campo tipo_impuesto: $e');
       }
     }
-    
+
     // Migración de versión 1 a 2: Agregar campos de pago
     if (oldVersion < 2) {
       debugPrint('📝 Agregando campos de pago a tabla factura...');
-      
-      await db.execute('ALTER TABLE factura ADD COLUMN metodo_pago TEXT NOT NULL DEFAULT "cash"');
+
+      await db.execute(
+          'ALTER TABLE factura ADD COLUMN metodo_pago TEXT NOT NULL DEFAULT "cash"');
       await db.execute('ALTER TABLE factura ADD COLUMN referencia_pago TEXT');
-      await db.execute('ALTER TABLE factura ADD COLUMN monto_bs REAL NOT NULL DEFAULT 0');
-      await db.execute('ALTER TABLE factura ADD COLUMN monto_usd REAL NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE factura ADD COLUMN monto_bs REAL NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE factura ADD COLUMN monto_usd REAL NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE factura ADD COLUMN ubii_reference TEXT');
       await db.execute('ALTER TABLE factura ADD COLUMN ubii_auth_code TEXT');
       await db.execute('ALTER TABLE factura ADD COLUMN ubii_card_type TEXT');
       await db.execute('ALTER TABLE factura ADD COLUMN ubii_terminal TEXT');
       await db.execute('ALTER TABLE factura ADD COLUMN ubii_lote TEXT');
-      await db.execute('ALTER TABLE factura ADD COLUMN ubii_response_code TEXT');
-      await db.execute('ALTER TABLE factura ADD COLUMN ubii_response_message TEXT');
-      
+      await db
+          .execute('ALTER TABLE factura ADD COLUMN ubii_response_code TEXT');
+      await db
+          .execute('ALTER TABLE factura ADD COLUMN ubii_response_message TEXT');
+
       debugPrint('✅ Campos de pago agregados exitosamente');
     }
-    
+
     // Migración de versión 2 a 3: Agregar tabla de cierres de lote
     if (oldVersion < 3) {
       debugPrint('📝 Creando tabla de cierres de lote...');
-      
+
       await db.execute('''
         CREATE TABLE cierres_lote (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -694,41 +1065,45 @@ class DbHelper {
           FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
         )
       ''');
-      
+
       debugPrint('✅ Tabla de cierres de lote creada exitosamente');
     }
-    
+
     // Migración de versión 3 a 4: Agregar campos fiscales a tabla factura
     if (oldVersion < 4) {
       debugPrint('📝 Agregando campos fiscales a tabla factura...');
-      
-      await db.execute('ALTER TABLE factura ADD COLUMN tipo_documento TEXT NOT NULL DEFAULT "Factura"');
-      await db.execute('ALTER TABLE factura ADD COLUMN base_imponible REAL NOT NULL DEFAULT 0');
-      await db.execute('ALTER TABLE factura ADD COLUMN monto_iva REAL NOT NULL DEFAULT 0');
-      
+
+      await db.execute(
+          'ALTER TABLE factura ADD COLUMN tipo_documento TEXT NOT NULL DEFAULT "Factura"');
+      await db.execute(
+          'ALTER TABLE factura ADD COLUMN base_imponible REAL NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE factura ADD COLUMN monto_iva REAL NOT NULL DEFAULT 0');
+
       debugPrint('✅ Campos fiscales agregados exitosamente');
       debugPrint('   - tipo_documento: Tipo de documento fiscal');
       debugPrint('   - base_imponible: Subtotal sin IVA');
       debugPrint('   - monto_iva: Monto del IVA (16%)');
     }
-    
+
     // Migración de versión 4 a 5: Agregar número de control
     if (oldVersion < 5) {
       debugPrint('📝 Agregando número de control a tabla factura...');
-      
+
       // Agregar columna numero_control
       await db.execute('ALTER TABLE factura ADD COLUMN numero_control TEXT');
-      
+
       // Generar números de control para facturas existentes
       final facturas = await db.query('factura', orderBy: 'id ASC');
-      
+
       if (facturas.isNotEmpty) {
-        debugPrint('   Generando números de control para ${facturas.length} facturas existentes...');
-        
+        debugPrint(
+            '   Generando números de control para ${facturas.length} facturas existentes...');
+
         for (int i = 0; i < facturas.length; i++) {
           final facturaId = facturas[i]['id'];
           final numeroControl = _formatearNumeroControl(i + 1);
-          
+
           await db.update(
             'factura',
             {'numero_control': numeroControl},
@@ -736,50 +1111,151 @@ class DbHelper {
             whereArgs: [facturaId],
           );
         }
-        
-        debugPrint('   ✅ Números de control generados para facturas existentes');
+
+        debugPrint(
+            '   ✅ Números de control generados para facturas existentes');
       }
-      
+
       // Crear índice único para numero_control
-      await db.execute('CREATE UNIQUE INDEX idx_numero_control ON factura(numero_control)');
-      
+      await db.execute(
+          'CREATE UNIQUE INDEX idx_numero_control ON factura(numero_control)');
+
       debugPrint('✅ Número de control agregado exitosamente');
       debugPrint('   - Formato: 00-0000001 (correlativo único)');
       debugPrint('   - Índice único creado para validación');
     }
-    
+
     // Migración de versión 5 a 6: Agregar campo descripcion a productos
     if (oldVersion < 6) {
       debugPrint('📝 Agregando campo descripcion a tabla productos...');
-      
+
       try {
         await db.execute('ALTER TABLE productos ADD COLUMN descripcion TEXT');
-        
+
         debugPrint('✅ Campo agregado exitosamente a tabla productos');
         debugPrint('   - descripcion: Descripción detallada del producto');
       } catch (e) {
-        debugPrint('⚠️ Error agregando campo a productos (puede que ya exista): $e');
+        debugPrint(
+            '⚠️ Error agregando campo a productos (puede que ya exista): $e');
       }
     }
-    
+
     // Migración de versión 6 a 7: Agregar campos de agente de retención
     if (oldVersion < 7) {
       debugPrint('📝 Agregando campos de agente de retención...');
-      
+
       try {
         // Agregar campo agente_retencion a tabla clientes
-        await db.execute('ALTER TABLE clientes ADD COLUMN agente_retencion INTEGER DEFAULT 0');
+        await db.execute(
+            'ALTER TABLE clientes ADD COLUMN agente_retencion INTEGER DEFAULT 0');
         debugPrint('   ✅ Campo agente_retencion agregado a tabla clientes');
-        
+
         // Agregar campo retencion_iva a tabla factura
-        await db.execute('ALTER TABLE factura ADD COLUMN retencion_iva REAL DEFAULT 0');
+        await db.execute(
+            'ALTER TABLE factura ADD COLUMN retencion_iva REAL DEFAULT 0');
         debugPrint('   ✅ Campo retencion_iva agregado a tabla factura');
-        
+
         debugPrint('✅ Campos de agente de retención agregados exitosamente');
-        debugPrint('   - agente_retencion: Indica si el cliente es agente de retención (0=No, 1=Sí)');
-        debugPrint('   - retencion_iva: Monto de retención de IVA (75% del IVA para agentes de retención)');
+        debugPrint(
+            '   - agente_retencion: Indica si el cliente es agente de retención (0=No, 1=Sí)');
+        debugPrint(
+            '   - retencion_iva: Monto de retención de IVA (75% del IVA para agentes de retención)');
       } catch (e) {
         debugPrint('⚠️ Error agregando campos de agente de retención: $e');
+      }
+    }
+
+    // Migración a v19: Arqueo de Caja (Gastos Diarios eliminado)
+    if (oldVersion < 19) {
+      debugPrint('📝 Iniciando migración a v19 (Arqueo de Caja)...');
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS arqueos_caja (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_fiscal_id INTEGER NOT NULL,
+            numero_arqueo TEXT NOT NULL UNIQUE,
+            fecha_arqueo TEXT NOT NULL,
+            usuario_arqueo_id INTEGER NOT NULL,
+            usuario_arqueo_nombre TEXT NOT NULL,
+            billete_100_usd INTEGER NOT NULL DEFAULT 0,
+            billete_50_usd INTEGER NOT NULL DEFAULT 0,
+            billete_20_usd INTEGER NOT NULL DEFAULT 0,
+            billete_10_usd INTEGER NOT NULL DEFAULT 0,
+            billete_5_usd INTEGER NOT NULL DEFAULT 0,
+            billete_1_usd INTEGER NOT NULL DEFAULT 0,
+            billete_100_bs INTEGER NOT NULL DEFAULT 0,
+            billete_50_bs INTEGER NOT NULL DEFAULT 0,
+            billete_20_bs INTEGER NOT NULL DEFAULT 0,
+            billete_10_bs INTEGER NOT NULL DEFAULT 0,
+            billete_5_bs INTEGER NOT NULL DEFAULT 0,
+            moneda_1_usd INTEGER NOT NULL DEFAULT 0,
+            moneda_050_usd INTEGER NOT NULL DEFAULT 0,
+            moneda_025_usd INTEGER NOT NULL DEFAULT 0,
+            moneda_010_usd INTEGER NOT NULL DEFAULT 0,
+            moneda_005_usd INTEGER NOT NULL DEFAULT 0,
+            moneda_001_usd INTEGER NOT NULL DEFAULT 0,
+            total_efectivo_usd REAL NOT NULL DEFAULT 0,
+            total_efectivo_bs REAL NOT NULL DEFAULT 0,
+            total_tarjeta_declarado REAL NOT NULL DEFAULT 0,
+            total_pago_movil_declarado REAL NOT NULL DEFAULT 0,
+            total_otros_declarado REAL NOT NULL DEFAULT 0,
+            total_efectivo_sistema REAL NOT NULL DEFAULT 0,
+            total_tarjeta_sistema REAL NOT NULL DEFAULT 0,
+            total_pago_movil_sistema REAL NOT NULL DEFAULT 0,
+            total_otros_sistema REAL NOT NULL DEFAULT 0,
+            diferencia_efectivo REAL NOT NULL DEFAULT 0,
+            diferencia_tarjeta REAL NOT NULL DEFAULT 0,
+            diferencia_pago_movil REAL NOT NULL DEFAULT 0,
+            diferencia_total REAL NOT NULL DEFAULT 0,
+            cuadrado INTEGER NOT NULL DEFAULT 0,
+            observaciones TEXT,
+            fondo_caja_inicial REAL NOT NULL DEFAULT 0,
+            server_id TEXT,
+            last_modified TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            sync_status INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT,
+            FOREIGN KEY (sesion_fiscal_id) REFERENCES sesiones_fiscales(id)
+          )
+        ''');
+        debugPrint('✅ Tabla arqueos_caja creada');
+      } catch (e) {
+        debugPrint('❌ Error en migración v19: $e');
+      }
+    }
+
+    // Migración a v20: Columnas fiscales en tabla factura (defensiva)
+    if (oldVersion < 20) {
+      debugPrint(
+          '📝 Iniciando migración a v20 (Columnas fiscales en factura)...');
+      try {
+        final columns = await db.rawQuery('PRAGMA table_info(factura)');
+        bool hasCol(String name) => columns.any((c) => c['name'] == name);
+
+        if (!hasCol('tiene_nota_credito')) {
+          await db.execute(
+              'ALTER TABLE factura ADD COLUMN tiene_nota_credito INTEGER DEFAULT 0');
+        }
+        if (!hasCol('sesion_fiscal_id')) {
+          await db.execute(
+              'ALTER TABLE factura ADD COLUMN sesion_fiscal_id INTEGER REFERENCES sesiones_fiscales(id)');
+        }
+        if (!hasCol('tasa_iva')) {
+          await db.execute(
+              'ALTER TABLE factura ADD COLUMN tasa_iva REAL DEFAULT 16.0');
+        }
+        if (!hasCol('monto_exento')) {
+          await db.execute(
+              'ALTER TABLE factura ADD COLUMN monto_exento REAL DEFAULT 0');
+        }
+        if (!hasCol('monto_base_imponible')) {
+          await db.execute(
+              'ALTER TABLE factura ADD COLUMN monto_base_imponible REAL');
+        }
+        debugPrint(
+            '✅ Columnas fiscales agregadas o validadas en tabla factura');
+      } catch (e) {
+        debugPrint('❌ Error en migración v20: $e');
       }
     }
   }
@@ -797,7 +1273,8 @@ class DbHelper {
   // ============================================================================
 
   /// Obtener todos los productos con su stock
-  Future<List<Map<String, dynamic>>> obtenerProductos({int? limit, int? offset}) async {
+  Future<List<Map<String, dynamic>>> obtenerProductos(
+      {int? limit, int? offset}) async {
     final db = await database;
     return await db.rawQuery('''
       SELECT 
@@ -863,7 +1340,7 @@ class DbHelper {
       GROUP BY p.id
       LIMIT 1
     ''', [codigo, codigo]);
-    
+
     return results.isNotEmpty ? results.first : null;
   }
 
@@ -893,12 +1370,12 @@ class DbHelper {
           where: 'producto_id = ?',
           whereArgs: [productoId],
         );
-        
+
         if (result.isEmpty) return;
-        
+
         final stockActual = result.first['stock'] as double;
         final nuevoStock = stockActual - cantidad;
-        
+
         // Actualizar stock
         await txn.update(
           'existencias',
@@ -918,7 +1395,7 @@ class DbHelper {
   }
 
   /// Crear un nuevo producto
-  /// 
+  ///
   /// Retorna el ID del producto creado
   Future<int> crearProducto({
     required String codArticulo,
@@ -930,10 +1407,10 @@ class DbHelper {
     String unidadMedida = 'und',
   }) async {
     final db = await database;
-    
+
     try {
       debugPrint('📦 Creando producto: $nombre');
-      
+
       final productoId = await db.insert('productos', {
         'cod_articulo': codArticulo,
         'cod_barras': codBarras.isEmpty ? null : codBarras,
@@ -944,12 +1421,13 @@ class DbHelper {
         'unidad_medida': unidadMedida,
         'fecha_creacion': DateTime.now().toIso8601String(),
       });
-      
+
       debugPrint('✅ Producto creado con ID: $productoId');
-      debugPrint('   Tipo impuesto: ${tipoImpuesto == "E" ? "Exento" : "General 16%"}');
+      debugPrint(
+          '   Tipo impuesto: ${tipoImpuesto == "E" ? "Exento" : "General 16%"}');
       SyncTrigger.instance.onProductoCreado(productoId).catchError(
-        (e) => debugPrint('⚠️ Sync producto en background falló: $e'),
-      );
+            (e) => debugPrint('⚠️ Sync producto en background falló: $e'),
+          );
       return productoId;
     } catch (e) {
       debugPrint('❌ Error creando producto: $e');
@@ -958,17 +1436,17 @@ class DbHelper {
   }
 
   /// Crear existencia inicial para un producto
-  /// 
+  ///
   /// Retorna el ID de la existencia creada
   Future<int> crearExistencia({
     required int productoId,
     required double cantidad,
   }) async {
     final db = await database;
-    
+
     try {
       debugPrint('📊 Creando existencia para producto ID: $productoId');
-      
+
       // Obtener código de artículo del producto
       final producto = await db.query(
         'productos',
@@ -977,21 +1455,22 @@ class DbHelper {
         whereArgs: [productoId],
         limit: 1,
       );
-      
+
       if (producto.isEmpty) {
         throw Exception('Producto no encontrado con ID: $productoId');
       }
-      
+
       final codArticulo = producto.first['cod_articulo'] as String;
-      
+
       final existenciaId = await db.insert('existencias', {
         'producto_id': productoId,
         'cod_articulo': codArticulo,
         'stock': cantidad,
         'ultima_actualizacion': DateTime.now().toIso8601String(),
       });
-      
-      debugPrint('✅ Existencia creada con ID: $existenciaId (Stock: $cantidad)');
+
+      debugPrint(
+          '✅ Existencia creada con ID: $existenciaId (Stock: $cantidad)');
       return existenciaId;
     } catch (e) {
       debugPrint('❌ Error creando existencia: $e');
@@ -1000,11 +1479,11 @@ class DbHelper {
   }
 
   /// Buscar producto por código de artículo o código de barras
-  /// 
+  ///
   /// Retorna el producto si existe, null si no se encuentra
   Future<Map<String, dynamic>?> buscarProductoPorCodigo(String codigo) async {
     final db = await database;
-    
+
     try {
       final results = await db.rawQuery('''
         SELECT 
@@ -1021,7 +1500,7 @@ class DbHelper {
         WHERE p.cod_articulo = ? OR p.cod_barras = ?
         LIMIT 1
       ''', [codigo, codigo]);
-      
+
       return results.isNotEmpty ? results.first : null;
     } catch (e) {
       debugPrint('❌ Error buscando producto por código: $e');
@@ -1030,7 +1509,7 @@ class DbHelper {
   }
 
   /// Actualizar un producto existente
-  /// 
+  ///
   /// Retorna true si se actualizó correctamente
   Future<bool> actualizarProducto({
     required int productoId,
@@ -1043,10 +1522,10 @@ class DbHelper {
     String unidadMedida = 'und',
   }) async {
     final db = await database;
-    
+
     try {
       debugPrint('📝 Actualizando producto ID: $productoId');
-      
+
       await db.transaction((txn) async {
         // Actualizar producto
         await txn.update(
@@ -1062,7 +1541,7 @@ class DbHelper {
           where: 'id = ?',
           whereArgs: [productoId],
         );
-        
+
         // Actualizar stock
         await txn.update(
           'existencias',
@@ -1074,14 +1553,14 @@ class DbHelper {
           whereArgs: [productoId],
         );
       });
-      
+
       debugPrint('✅ Producto actualizado correctamente');
       SyncTrigger.instance.onProductoActualizado(productoId).catchError(
-        (e) => debugPrint('⚠️ Sync producto actualizado falló: $e'),
-      );
+            (e) => debugPrint('⚠️ Sync producto actualizado falló: $e'),
+          );
       SyncTrigger.instance.onExistenciaActualizada(productoId).catchError(
-        (e) => debugPrint('⚠️ Sync existencia actualizada falló: $e'),
-      );
+            (e) => debugPrint('⚠️ Sync existencia actualizada falló: $e'),
+          );
       return true;
     } catch (e) {
       debugPrint('❌ Error actualizando producto: $e');
@@ -1090,33 +1569,36 @@ class DbHelper {
   }
 
   /// Eliminar un producto
-  /// 
+  ///
   /// Verifica si el producto está en facturas antes de eliminar
   /// Retorna un Map con 'success' y 'message'
   Future<Map<String, dynamic>> eliminarProducto(int productoId) async {
     final db = await database;
-    
+
     try {
-      debugPrint('🗑️ Verificando si se puede eliminar producto ID: $productoId');
-      
+      debugPrint(
+          '🗑️ Verificando si se puede eliminar producto ID: $productoId');
+
       // Verificar si el producto está en alguna factura
       final facturas = await db.rawQuery('''
         SELECT COUNT(*) as count
         FROM factura_detalle
         WHERE producto_id = ?
       ''', [productoId]);
-      
+
       final count = Sqflite.firstIntValue(facturas) ?? 0;
-      
+
       if (count > 0) {
-        debugPrint('⚠️ No se puede eliminar: producto usado en $count factura(s)');
+        debugPrint(
+            '⚠️ No se puede eliminar: producto usado en $count factura(s)');
         return {
           'success': false,
-          'message': 'No se puede eliminar este producto porque está registrado en $count factura(s). '
-                    'Los productos con historial de ventas deben mantenerse en el sistema.',
+          'message':
+              'No se puede eliminar este producto porque está registrado en $count factura(s). '
+                  'Los productos con historial de ventas deben mantenerse en el sistema.',
         };
       }
-      
+
       // Si no está en facturas, proceder a eliminar
       // Obtener cod_articulo antes de eliminar (para sync)
       final productoRows = await db.query('productos',
@@ -1132,7 +1614,7 @@ class DbHelper {
           where: 'producto_id = ?',
           whereArgs: [productoId],
         );
-        
+
         // Eliminar producto
         await txn.delete(
           'productos',
@@ -1140,12 +1622,12 @@ class DbHelper {
           whereArgs: [productoId],
         );
       });
-      
+
       debugPrint('✅ Producto eliminado correctamente');
       if (codArticulo != null) {
         SyncTrigger.instance.onProductoEliminado(codArticulo).catchError(
-          (e) => debugPrint('⚠️ Sync eliminación falló: $e'),
-        );
+              (e) => debugPrint('⚠️ Sync eliminación falló: $e'),
+            );
       }
       return {
         'success': true,
@@ -1172,8 +1654,8 @@ class DbHelper {
       'fecha_creacion': DateTime.now().toIso8601String(),
     });
     SyncTrigger.instance.onClienteCreado(id).catchError(
-      (e) => debugPrint('⚠️ Sync cliente creado falló: $e'),
-    );
+          (e) => debugPrint('⚠️ Sync cliente creado falló: $e'),
+        );
     return id;
   }
 
@@ -1187,8 +1669,8 @@ class DbHelper {
       whereArgs: [id],
     );
     SyncTrigger.instance.onClienteActualizado(id).catchError(
-      (e) => debugPrint('⚠️ Sync cliente actualizado falló: $e'),
-    );
+          (e) => debugPrint('⚠️ Sync cliente actualizado falló: $e'),
+        );
     return count;
   }
 
@@ -1199,7 +1681,8 @@ class DbHelper {
   }
 
   /// Buscar cliente por identificación
-  Future<Map<String, dynamic>?> buscarClientePorId(String identificacion) async {
+  Future<Map<String, dynamic>?> buscarClientePorId(
+      String identificacion) async {
     final db = await database;
     final results = await db.query(
       'clientes',
@@ -1211,7 +1694,8 @@ class DbHelper {
   }
 
   /// Buscar clientes por nombre
-  Future<List<Map<String, dynamic>>> buscarClientesPorNombre(String nombre) async {
+  Future<List<Map<String, dynamic>>> buscarClientesPorNombre(
+      String nombre) async {
     final db = await database;
     return await db.query(
       'clientes',
@@ -1227,7 +1711,7 @@ class DbHelper {
   // ============================================================================
 
   /// Crear una nueva factura con sus detalles
-  /// 
+  ///
   /// IMPORTANTE: El número de control se genera automáticamente si no se proporciona.
   /// Solo proporciona un número de control manualmente en casos especiales (migraciones, etc.)
   Future<int> crearFactura({
@@ -1253,6 +1737,10 @@ class DbHelper {
     String? ubiiLote,
     String? ubiiResponseCode,
     String? ubiiResponseMessage,
+    int? sesionFiscalId,
+    double? tasaIva,
+    double? montoExento,
+    double? montoBaseImponible,
   }) async {
     final db = await database;
     int facturaId = 0;
@@ -1268,61 +1756,65 @@ class DbHelper {
     while (intentos < 5) {
       try {
         await db.transaction((txn) async {
-      
-      // Insertar cabecera de factura
-      facturaId = await txn.insert('factura', {
-        'numero_control': numeroControlFinal,
-        'fecha_creacion': DateTime.now().toIso8601String(),
-        'cliente_id': clienteId,
-        'usuario_id': usuarioId,
-        'tipo_documento': tipoDocumento,
-        'base_imponible': baseImponible,
-        'monto_iva': montoIva,
-        'retencion_iva': retencionIva,
-        'tasa_usd': tasaUsd,
-        'tasa_eur': tasaEur,
-        'total': total,
-        'metodo_pago': metodoPago,
-        'referencia_pago': referenciaPago,
-        'monto_bs': montoBs,
-        'monto_usd': montoUsd,
-        'ubii_reference': ubiiReference,
-        'ubii_auth_code': ubiiAuthCode,
-        'ubii_card_type': ubiiCardType,
-        'ubii_terminal': ubiiTerminal,
-        'ubii_lote': ubiiLote,
-        'ubii_response_code': ubiiResponseCode,
-        'ubii_response_message': ubiiResponseMessage,
-      });
+          // Insertar cabecera de factura
+          facturaId = await txn.insert('factura', {
+            'numero_control': numeroControlFinal,
+            'fecha_creacion': DateTime.now().toIso8601String(),
+            'cliente_id': clienteId,
+            'usuario_id': usuarioId,
+            'tipo_documento': tipoDocumento,
+            'base_imponible': baseImponible,
+            'monto_iva': montoIva,
+            'retencion_iva': retencionIva,
+            'tasa_usd': tasaUsd,
+            'tasa_eur': tasaEur,
+            'total': total,
+            'metodo_pago': metodoPago,
+            'referencia_pago': referenciaPago,
+            'monto_bs': montoBs,
+            'monto_usd': montoUsd,
+            'ubii_reference': ubiiReference,
+            'ubii_auth_code': ubiiAuthCode,
+            'ubii_card_type': ubiiCardType,
+            'ubii_terminal': ubiiTerminal,
+            'ubii_lote': ubiiLote,
+            'ubii_response_code': ubiiResponseCode,
+            'ubii_response_message': ubiiResponseMessage,
+            'sesion_fiscal_id': sesionFiscalId,
+            'tasa_iva': tasaIva ?? 16.0,
+            'monto_exento': montoExento ?? 0.0,
+            'monto_base_imponible': montoBaseImponible,
+          });
 
-      // Insertar detalles y actualizar stock
-      for (var detalle in detalles) {
-        await txn.insert('factura_detalle', {
-          'factura_id': facturaId,
-          'producto_id': detalle['producto_id'],
-          'cantidad': detalle['cantidad'],
-          'precio_unitario': detalle['precio_unitario'],
-          'subtotal': detalle['subtotal'],
-        });
+          // Insertar detalles y actualizar stock
+          for (var detalle in detalles) {
+            await txn.insert('factura_detalle', {
+              'factura_id': facturaId,
+              'producto_id': detalle['producto_id'],
+              'cantidad': detalle['cantidad'],
+              'precio_unitario': detalle['precio_unitario'],
+              'subtotal': detalle['subtotal'],
+            });
 
-        // Reducir stock
-        await txn.rawUpdate('''
+            // Reducir stock
+            await txn.rawUpdate('''
           UPDATE existencias 
           SET stock = stock - ?,
               ultima_actualizacion = ?
           WHERE producto_id = ?
         ''', [
-          detalle['cantidad'],
-          DateTime.now().toIso8601String(),
-          detalle['producto_id'],
-        ]);
-      }
+              detalle['cantidad'],
+              DateTime.now().toIso8601String(),
+              detalle['producto_id'],
+            ]);
+          }
         }); // fin transaction
         break; // éxito — salir del retry loop
       } on DatabaseException catch (e) {
         if (e.isUniqueConstraintError() && intentos < 4) {
           intentos++;
-          debugPrint('⚠️ Número de control $numeroControlFinal ya existe, reintentando ($intentos/5)...');
+          debugPrint(
+              '⚠️ Número de control $numeroControlFinal ya existe, reintentando ($intentos/5)...');
           numeroControlFinal = await generarNumeroControl();
           debugPrint('🔢 Nuevo número de control: $numeroControlFinal');
         } else {
@@ -1333,8 +1825,8 @@ class DbHelper {
 
     // Sincronizar con Supabase en segundo plano (no bloquea la UI)
     SyncTrigger.instance.onFacturaCreada(facturaId).catchError(
-      (e) => debugPrint('⚠️ Sync factura en background falló: $e'),
-    );
+          (e) => debugPrint('⚠️ Sync factura en background falló: $e'),
+        );
 
     return facturaId;
   }
@@ -1345,7 +1837,8 @@ class DbHelper {
     final db = await database;
     final hoy = DateTime.now();
     final inicio = DateTime(hoy.year, hoy.month, hoy.day).toIso8601String();
-    final fin = DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59).toIso8601String();
+    final fin =
+        DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59).toIso8601String();
 
     final count = await db.rawUpdate('''
       UPDATE factura
@@ -1366,26 +1859,27 @@ class DbHelper {
     int? limit,
   }) async {
     final db = await database;
-    
+
     String whereClause = "f.estado = 'activo'";
     List<dynamic> whereArgs = [];
-    
+
     if (desde != null) {
       whereClause += ' AND f.fecha_creacion >= ?';
       whereArgs.add(desde.toIso8601String());
     }
-    
+
     if (hasta != null) {
       whereClause += ' AND f.fecha_creacion <= ?';
       whereArgs.add(hasta.toIso8601String());
     }
-    
+
     return await db.rawQuery('''
       SELECT 
         f.*,
         c.nombre as cliente_nombre,
         c.identificacion as cliente_identificacion,
-        u.nombre as usuario_nombre
+        u.nombre as usuario_nombre,
+        (SELECT COUNT(*) FROM nota_credito nc WHERE nc.factura_id = f.id AND nc.estado IN ('pendiente', 'procesada')) as tiene_nota_credito
       FROM factura f
       INNER JOIN clientes c ON f.cliente_id = c.id
       INNER JOIN usuarios u ON f.usuario_id = u.id
@@ -1396,9 +1890,10 @@ class DbHelper {
   }
 
   /// Obtener detalles de productos de una factura
-  Future<List<Map<String, dynamic>>> obtenerDetallesFactura(int facturaId) async {
+  Future<List<Map<String, dynamic>>> obtenerDetallesFactura(
+      int facturaId) async {
     final db = await database;
-    
+
     return await db.rawQuery('''
       SELECT 
         fd.*,
@@ -1414,7 +1909,7 @@ class DbHelper {
   /// Obtener detalle de una factura
   Future<Map<String, dynamic>?> obtenerDetalleFactura(int facturaId) async {
     final db = await database;
-    
+
     // Obtener cabecera
     final facturas = await db.rawQuery('''
       SELECT 
@@ -1427,11 +1922,11 @@ class DbHelper {
       INNER JOIN usuarios u ON f.usuario_id = u.id
       WHERE f.id = ?
     ''', [facturaId]);
-    
+
     if (facturas.isEmpty) return null;
-    
+
     final factura = Map<String, dynamic>.from(facturas.first);
-    
+
     // Obtener detalles
     final detalles = await db.rawQuery('''
       SELECT 
@@ -1442,9 +1937,9 @@ class DbHelper {
       INNER JOIN productos p ON fd.producto_id = p.id
       WHERE fd.factura_id = ?
     ''', [facturaId]);
-    
+
     factura['detalles'] = detalles;
-    
+
     return factura;
   }
 
@@ -1462,7 +1957,8 @@ class DbHelper {
   }
 
   /// Verificar credenciales de usuario
-  Future<Map<String, dynamic>?> verificarUsuario(String usuario, String clave) async {
+  Future<Map<String, dynamic>?> verificarUsuario(
+      String usuario, String clave) async {
     final db = await database;
     final claveHash = _hashPassword(clave);
     final results = await db.query(
@@ -1486,7 +1982,8 @@ class DbHelper {
   }
 
   /// Actualizar contraseña de un usuario
-  Future<bool> actualizarClaveUsuario(String usuario, String nuevaClaveHash) async {
+  Future<bool> actualizarClaveUsuario(
+      String usuario, String nuevaClaveHash) async {
     try {
       final db = await database;
       final count = await db.update(
@@ -1509,12 +2006,15 @@ class DbHelper {
   /// Obtener estadísticas generales
   Future<Map<String, dynamic>> obtenerEstadisticas() async {
     final db = await database;
-    
-    final productos = await db.rawQuery('SELECT COUNT(*) as count FROM productos');
-    final clientes = await db.rawQuery('SELECT COUNT(*) as count FROM clientes');
+
+    final productos =
+        await db.rawQuery('SELECT COUNT(*) as count FROM productos');
+    final clientes =
+        await db.rawQuery('SELECT COUNT(*) as count FROM clientes');
     final facturas = await db.rawQuery('SELECT COUNT(*) as count FROM factura');
-    final totalVentas = await db.rawQuery('SELECT SUM(total) as total FROM factura');
-    
+    final totalVentas =
+        await db.rawQuery('SELECT SUM(total) as total FROM factura');
+
     return {
       'productos': Sqflite.firstIntValue(productos) ?? 0,
       'clientes': Sqflite.firstIntValue(clientes) ?? 0,
@@ -1548,22 +2048,26 @@ class DbHelper {
     required Map<String, dynamic> ubiiData,
   }) async {
     final db = await database;
-    
+
     try {
       final datosCompletos = ubiiData.toString();
 
       // Calcular totales reales desde el lote de facturas activas
       final totalesLocales = await obtenerTotalesLoteActivo();
       final totalFacturasLocales = totalesLocales['total_facturas'] ?? 0;
-      final montoTotalLocal = (totalesLocales['total_usd'] as num?)?.toDouble() ?? 0.0;
+      final montoTotalLocal =
+          (totalesLocales['total_usd'] as num?)?.toDouble() ?? 0.0;
 
       // Usar valores locales si Ubii no devuelve datos confiables
-      final totalTransacciones = (ubiiData['totalTransactions'] != null && ubiiData['totalTransactions'] != 0)
+      final totalTransacciones = (ubiiData['totalTransactions'] != null &&
+              ubiiData['totalTransactions'] != 0)
           ? ubiiData['totalTransactions']
           : totalFacturasLocales;
-      final montoTotal = (ubiiData['totalAmount'] != null && ubiiData['totalAmount'] != 0)
-          ? (double.tryParse(ubiiData['totalAmount'].toString()) ?? montoTotalLocal)
-          : montoTotalLocal;
+      final montoTotal =
+          (ubiiData['totalAmount'] != null && ubiiData['totalAmount'] != 0)
+              ? (double.tryParse(ubiiData['totalAmount'].toString()) ??
+                  montoTotalLocal)
+              : montoTotalLocal;
 
       int cierreId = 0;
       await db.transaction((txn) async {
@@ -1590,13 +2094,13 @@ class DbHelper {
             AND metodo_pago != 'cash'
         ''');
       });
-      
+
       debugPrint('✅ Cierre de lote registrado con ID: $cierreId');
       debugPrint('   Transacciones: $totalTransacciones');
       debugPrint('   Monto total: $montoTotal');
       SyncTrigger.instance.onCierreLoteCreado(cierreId).catchError(
-        (e) => debugPrint('⚠️ Sync cierre lote falló: $e'),
-      );
+            (e) => debugPrint('⚠️ Sync cierre lote falló: $e'),
+          );
       return cierreId;
     } catch (e) {
       debugPrint('❌ Error registrando cierre de lote: $e');
@@ -1611,21 +2115,21 @@ class DbHelper {
     int? limit,
   }) async {
     final db = await database;
-    
+
     String whereClause = '';
     List<dynamic> whereArgs = [];
-    
+
     if (desde != null) {
       whereClause += 'c.fecha_creacion >= ?';
       whereArgs.add(desde.toIso8601String());
     }
-    
+
     if (hasta != null) {
       if (whereClause.isNotEmpty) whereClause += ' AND ';
       whereClause += 'c.fecha_creacion <= ?';
       whereArgs.add(hasta.toIso8601String());
     }
-    
+
     return await db.rawQuery('''
       SELECT 
         c.*,
@@ -1641,7 +2145,7 @@ class DbHelper {
   /// Obtener el último cierre de lote
   Future<Map<String, dynamic>?> obtenerUltimoCierre() async {
     final db = await database;
-    
+
     final results = await db.rawQuery('''
       SELECT 
         c.*,
@@ -1651,7 +2155,7 @@ class DbHelper {
       ORDER BY c.fecha_creacion DESC
       LIMIT 1
     ''');
-    
+
     return results.isNotEmpty ? results.first : null;
   }
 
@@ -1660,7 +2164,7 @@ class DbHelper {
     final hoy = DateTime.now();
     final inicioDelDia = DateTime(hoy.year, hoy.month, hoy.day);
     final finDelDia = DateTime(hoy.year, hoy.month, hoy.day, 23, 59, 59);
-    
+
     return await obtenerCierresLote(
       desde: inicioDelDia,
       hasta: finDelDia,
@@ -1676,11 +2180,13 @@ class DbHelper {
   /// Obtener estadísticas de cierres
   Future<Map<String, dynamic>> obtenerEstadisticasCierres() async {
     final db = await database;
-    
-    final totalCierres = await db.rawQuery('SELECT COUNT(*) as count FROM cierres_lote');
-    final montoTotal = await db.rawQuery('SELECT SUM(monto_total) as total FROM cierres_lote');
+
+    final totalCierres =
+        await db.rawQuery('SELECT COUNT(*) as count FROM cierres_lote');
+    final montoTotal =
+        await db.rawQuery('SELECT SUM(monto_total) as total FROM cierres_lote');
     final ultimoCierre = await obtenerUltimoCierre();
-    
+
     return {
       'total_cierres': Sqflite.firstIntValue(totalCierres) ?? 0,
       'monto_total_acumulado': (montoTotal.first['total'] as double?) ?? 0.0,
@@ -1705,14 +2211,15 @@ class DbHelper {
         AND metodo_pago != 'cash'
     ''');
 
-    return result.isNotEmpty ? result.first : {
-      'total_facturas': 0,
-      'total_usd': 0.0,
-      'total_bs': 0.0,
-      'base_imponible': 0.0,
-      'total_iva': 0.0,
-      'total_retencion': 0.0,
-    };
+    return result.isNotEmpty
+        ? result.first
+        : {
+            'total_facturas': 0,
+            'total_usd': 0.0,
+            'total_bs': 0.0,
+            'base_imponible': 0.0,
+            'total_iva': 0.0,
+            'total_retencion': 0.0,
+          };
   }
 }
-

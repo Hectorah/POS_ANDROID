@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../DATABASE/db_helper.dart';
+import '../database/db_helper.dart';
 import '../models/app_models.dart';
 
 /// Servicio de autenticación

@@ -5,11 +5,16 @@ import '../../core/constants/app_colors.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../database/db_helper.dart';
 import '../../providers/user_provider.dart';
+import '../../providers/fiscal_provider.dart';
 import '../../services/excel_service.dart';
+import '../widgets/estado_fiscal_banner.dart';
 import 'create_document_screen.dart'
     show CreateDocumentScreen, CurrencyFormatter;
 import 'admin_cierre_lote_screen.dart';
 import 'products_list_screen.dart';
+import 'nota_credito_list_screen.dart';
+import 'apertura_fiscal_screen.dart';
+import 'cierre_fiscal_screen.dart';
 
 class DocumentsScreen extends StatefulWidget {
   const DocumentsScreen({super.key});
@@ -418,6 +423,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             ),
             onSelected: (String value) {
               switch (value) {
+                case 'apertura_fiscal':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AperturaFiscalScreen(),
+                    ),
+                  );
+                  break;
+                case 'cierre_fiscal':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CierreFiscalScreen(),
+                    ),
+                  );
+                  break;
                 case 'productos':
                   Navigator.push(
                     context,
@@ -440,6 +461,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 case 'cierre_z':
                   _showCierreZDialog();
                   break;
+                case 'notas_credito':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const NotaCreditoListScreen(),
+                    ),
+                  );
+                  break;
                 case 'importar':
                   _showImportDialog();
                   break;
@@ -451,383 +480,483 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   break;
               }
             },
-            itemBuilder: (BuildContext context) => [
-              // Productos
-              PopupMenuItem<String>(
-                value: 'productos',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.inventory_2,
-                      color: isDark ? AppColors.darkText : AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Productos',
-                        style: TextStyle(
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
-                          fontSize: 14,
+            itemBuilder: (BuildContext context) {
+              final fiscalProvider =
+                  Provider.of<FiscalProvider>(context, listen: false);
+              final haySesionAbierta = fiscalProvider.haySesionAbierta;
+              return [
+                // ── SECCIÓN FISCAL ─────────────────────────────────────────
+                // Apertura Fiscal
+                PopupMenuItem<String>(
+                  value: 'apertura_fiscal',
+                  enabled: !haySesionAbierta,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.play_arrow_rounded,
+                        color: haySesionAbierta
+                            ? AppColors.darkTextSecondary
+                            : Colors.green.shade600,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Apertura Fiscal',
+                              style: TextStyle(
+                                color: haySesionAbierta
+                                    ? AppColors.darkTextSecondary
+                                    : Colors.green.shade700,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              haySesionAbierta
+                                  ? 'Sesión ya abierta'
+                                  : 'Iniciar jornada del día',
+                              style: const TextStyle(
+                                color: AppColors.darkTextSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              // Cierre de Lote
-              PopupMenuItem<String>(
-                value: 'cierre_lote',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.receipt_long,
-                      color: isDark ? AppColors.darkText : AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Cierre de Lote',
-                        style: TextStyle(
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
-                          fontSize: 14,
+                // Cierre Fiscal (Reporte Z)
+                PopupMenuItem<String>(
+                  value: 'cierre_fiscal',
+                  enabled: haySesionAbierta,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        color: haySesionAbierta
+                            ? AppColors.error
+                            : AppColors.darkTextSecondary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Cierre Fiscal (Z)',
+                              style: TextStyle(
+                                color: haySesionAbierta
+                                    ? AppColors.error
+                                    : AppColors.darkTextSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              haySesionAbierta
+                                  ? 'Cerrar jornada — IRREVERSIBLE'
+                                  : 'Sin sesión activa',
+                              style: const TextStyle(
+                                color: AppColors.darkTextSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              // Cierre X
-              PopupMenuItem<String>(
-                value: 'cierre_x',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.close,
-                      color: isDark ? AppColors.darkText : AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Cierre X',
-                        style: TextStyle(
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
-                          fontSize: 14,
+                // Divisor
+                const PopupMenuDivider(),
+                // ── SECCIÓN OPERACIONES ─────────────────────────────────────
+                // Productos
+                PopupMenuItem<String>(
+                  value: 'productos',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.inventory_2,
+                        color: isDark ? AppColors.darkText : AppColors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Productos',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              // Cierre Z
-              PopupMenuItem<String>(
-                value: 'cierre_z',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.block,
-                      color: AppColors.error,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Cierre Z',
-                        style: TextStyle(
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
-                          fontSize: 14,
+                // Cierre de Lote
+                PopupMenuItem<String>(
+                  value: 'cierre_lote',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.receipt_long,
+                        color: isDark ? AppColors.darkText : AppColors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Cierre de Lote',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              // Importar productos
-              PopupMenuItem<String>(
-                value: 'importar',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.upload_file_rounded,
-                      color: isDark ? AppColors.darkText : AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Importar Productos',
-                        style: TextStyle(
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
-                          fontSize: 14,
+
+                // Notas de Crédito
+                PopupMenuItem<String>(
+                  value: 'notas_credito',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.receipt_long,
+                        color: isDark ? AppColors.darkText : AppColors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Notas de Crédito',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              // Cambiar tema
-              PopupMenuItem<String>(
-                value: 'tema',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      themeProvider.themeMode == ThemeMode.dark
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      color: isDark ? AppColors.darkText : AppColors.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
+                // Importar productos
+                PopupMenuItem<String>(
+                  value: 'importar',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.upload_file_rounded,
+                        color: isDark ? AppColors.darkText : AppColors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Importar Productos',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Cambiar tema
+                PopupMenuItem<String>(
+                  value: 'tema',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
                         themeProvider.themeMode == ThemeMode.dark
-                            ? 'Modo Claro'
-                            : 'Modo Oscuro',
-                        style: TextStyle(
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
-                          fontSize: 14,
+                            ? Icons.light_mode_rounded
+                            : Icons.dark_mode_rounded,
+                        color: isDark ? AppColors.darkText : AppColors.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          themeProvider.themeMode == ThemeMode.dark
+                              ? 'Modo Claro'
+                              : 'Modo Oscuro',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              // Divisor
-              const PopupMenuDivider(),
-              // Cerrar sesión
-              PopupMenuItem<String>(
-                value: 'logout',
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.logout_rounded,
-                      color: AppColors.error,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Cerrar Sesión',
-                        style: TextStyle(
-                          color: isDark ? AppColors.error : AppColors.error,
-                          fontSize: 14,
+                // Divisor
+                const PopupMenuDivider(),
+                // Cerrar sesión
+                PopupMenuItem<String>(
+                  value: 'logout',
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.logout_rounded,
+                        color: AppColors.error,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Cerrar Sesión',
+                          style: TextStyle(
+                            color: isDark ? AppColors.error : AppColors.error,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ];
+            },
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: _isCheckingProducts
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Verificando inventario...',
-                    style: TextStyle(
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: _isLoadingInvoices
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const CircularProgressIndicator(),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Cargando facturas...',
-                                style: TextStyle(
-                                  color: isDark
-                                      ? AppColors.darkTextSecondary
-                                      : AppColors.lightTextSecondary,
-                                ),
-                              ),
-                            ],
+      body: Column(
+        children: [
+          const EstadoFiscalBanner(),
+          Expanded(
+            child: _isCheckingProducts
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Verificando inventario...',
+                          style: TextStyle(
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
-                        )
-                      : _invoices.isEmpty
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
+                        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        child: _isLoadingInvoices
+                            ? Center(
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Icon(
-                                      Icons.description_outlined,
-                                      size: 64,
-                                      color: isDark
-                                          ? AppColors.darkTextSecondary
-                                          : AppColors.lightTextSecondary,
-                                    ),
+                                    const CircularProgressIndicator(),
                                     const SizedBox(height: 16),
                                     Text(
-                                      'No hay facturas',
+                                      'Cargando facturas...',
                                       style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: isDark
-                                            ? AppColors.darkText
-                                            : AppColors.lightText,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Crea tu primera factura para comenzar',
-                                      style: TextStyle(
-                                        fontSize: 14,
                                         color: isDark
                                             ? AppColors.darkTextSecondary
                                             : AppColors.lightTextSecondary,
                                       ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 32),
-                                    ElevatedButton.icon(
-                                      onPressed: () async {
-                                        await Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const CreateDocumentScreen(),
-                                          ),
-                                        );
-                                        // Recargar facturas al volver
-                                        _loadInvoices();
-                                      },
-                                      icon: const Icon(Icons.add),
-                                      label: const Text('Crear Nueva Factura'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.primary,
-                                        foregroundColor: AppColors.textLight,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 24, vertical: 16),
-                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _loadInvoices,
-                              child: Column(
-                                children: [
-                                  // Header con título y botón
-                                  Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
+                              )
+                            : _invoices.isEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.description_outlined,
+                                            size: 64,
+                                            color: isDark
+                                                ? AppColors.darkTextSecondary
+                                                : AppColors.lightTextSecondary,
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'No hay facturas',
+                                            style: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark
+                                                  ? AppColors.darkText
+                                                  : AppColors.lightText,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Crea tu primera factura para comenzar',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: isDark
+                                                  ? AppColors.darkTextSecondary
+                                                  : AppColors
+                                                      .lightTextSecondary,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 32),
+                                          ElevatedButton.icon(
+                                            onPressed: () async {
+                                              await Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      const CreateDocumentScreen(),
+                                                ),
+                                              );
+                                              // Recargar facturas al volver
+                                              _loadInvoices();
+                                            },
+                                            icon: const Icon(Icons.add),
+                                            label: const Text(
+                                                'Crear Nueva Factura'),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  AppColors.primary,
+                                              foregroundColor:
+                                                  AppColors.textLight,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 24,
+                                                      vertical: 16),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : RefreshIndicator(
+                                    onRefresh: _loadInvoices,
+                                    child: Column(
                                       children: [
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Últimas Facturas',
-                                              style: TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                                color: isDark
-                                                    ? AppColors.darkText
-                                                    : AppColors.lightText,
+                                        // Header con título y botón
+                                        Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Últimas Facturas',
+                                                    style: TextStyle(
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: isDark
+                                                          ? AppColors.darkText
+                                                          : AppColors.lightText,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '${_invoices.length} registros',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: isDark
+                                                          ? AppColors
+                                                              .darkTextSecondary
+                                                          : AppColors
+                                                              .lightTextSecondary,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${_invoices.length} registros',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: isDark
-                                                    ? AppColors
-                                                        .darkTextSecondary
-                                                    : AppColors
-                                                        .lightTextSecondary,
+                                              ElevatedButton.icon(
+                                                onPressed: () async {
+                                                  await Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) =>
+                                                          const CreateDocumentScreen(),
+                                                    ),
+                                                  );
+                                                  // Recargar facturas al volver
+                                                  _loadInvoices();
+                                                },
+                                                icon: const Icon(Icons.add,
+                                                    size: 20),
+                                                label: const Text('Nueva'),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor:
+                                                      AppColors.primary,
+                                                  foregroundColor:
+                                                      AppColors.textLight,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 12),
+                                                ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                        ElevatedButton.icon(
-                                          onPressed: () async {
-                                            await Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    const CreateDocumentScreen(),
-                                              ),
-                                            );
-                                            // Recargar facturas al volver
-                                            _loadInvoices();
-                                          },
-                                          icon: const Icon(Icons.add, size: 20),
-                                          label: const Text('Nueva'),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.primary,
-                                            foregroundColor:
-                                                AppColors.textLight,
+                                        // Lista de facturas
+                                        Expanded(
+                                          child: ListView.builder(
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 16, vertical: 12),
+                                                horizontal: 16),
+                                            itemCount: _invoices.length,
+                                            itemBuilder: (context, index) {
+                                              final invoice = _invoices[index];
+                                              return _buildInvoiceCard(
+                                                  invoice, isDark);
+                                            },
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  // Lista de facturas
-                                  Expanded(
-                                    child: ListView.builder(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16),
-                                      itemCount: _invoices.length,
-                                      itemBuilder: (context, index) {
-                                        final invoice = _invoices[index];
-                                        return _buildInvoiceCard(
-                                            invoice, isDark);
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                ), // cierre Expanded
-              ],
-            ),
+                      ), // cierre Expanded
+                    ],
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1071,8 +1200,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               onPressed: () {
                 Navigator.of(dialogContext).pop();
 
-                // TODO: Aquí iría la lógica real del cierre X
-
                 // Mostrar mensaje de éxito
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -1192,8 +1319,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               onPressed: () async {
                 Navigator.of(dialogContext).pop();
 
-                // [TEST] Cierre Z simulado: cerrar facturas del día
-                // TODO: REVERTIR - reemplazar con lógica real de cierre Z
                 final count = await DbHelper.instance.cerrarFacturasDelDia();
 
                 if (!mounted) return;
@@ -1306,6 +1431,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final metodoPago = invoice['metodo_pago'] ?? 'cash';
     final total = invoice['total'] as double;
     final clienteIdentificacion = invoice['cliente_identificacion'] ?? 'N/A';
+    final tieneNotaCredito = (invoice['tiene_nota_credito'] as int? ?? 0) > 0;
 
     // Obtener referencia de Ubii si existe
     final ubiiReference = invoice['ubii_reference'] as String?;
@@ -1356,6 +1482,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
+        side: tieneNotaCredito
+            ? const BorderSide(color: AppColors.error, width: 1.5)
+            : BorderSide.none,
       ),
       child: InkWell(
         onTap: () => _showInvoiceDetail(invoice),
@@ -1397,6 +1526,35 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                             ],
                           ),
                         ),
+                        // Indicador de nota de crédito aplicada
+                        if (tieneNotaCredito)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.error.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.circle,
+                                      size: 8, color: AppColors.error),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Nota de Crédito aplicada',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.error,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 6),
                         Row(
                           children: [
