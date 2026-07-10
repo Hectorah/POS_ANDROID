@@ -54,15 +54,12 @@ class FiscalService {
     final db = await DbHelper.instance.database;
     final ahora = DateTime.now();
 
-    // Generar número de sesión correlativo numérico: YYYYMMDDXXX
-    final fechaHoyStr =
-        ahora.toIso8601String().substring(0, 10).replaceAll('-', '');
+    // Generar número de sesión correlativo numérico estándar de 6 dígitos: 000000
     final resultCount = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM sesiones_fiscales WHERE numero_sesion LIKE ?',
-        ['$fechaHoyStr%']);
+        'SELECT COUNT(*) as count FROM sesiones_fiscales');
     final count = Sqflite.firstIntValue(resultCount) ?? 0;
-    final secuencia = (count + 1).toString().padLeft(3, '0');
-    final numeroSesion = '$fechaHoyStr$secuencia';
+    final secuencia = (count + 1).toString().padLeft(6, '0');
+    final numeroSesion = secuencia;
 
     final nuevaSesion = SesionFiscal(
       numeroSesion: numeroSesion,
@@ -162,15 +159,12 @@ class FiscalService {
     // La diferencia total del cuadre se basa únicamente en el efectivo
     final double diferenciaTotal = diferenciaEfectivo;
 
-    // 4. GENERAR NÚMERO DE ARQUEO
-    final fechaHoyStr =
-        ahora.toIso8601String().substring(0, 10).replaceAll('-', '');
+    // 4. GENERAR NÚMERO DE ARQUEO ESTÁNDAR DE 6 DÍGITOS
     final resultCount = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM arqueos_caja WHERE numero_arqueo LIKE ?',
-        ['$fechaHoyStr%']);
+        'SELECT COUNT(*) as count FROM arqueos_caja');
     final count = Sqflite.firstIntValue(resultCount) ?? 0;
-    final secuencia = (count + 1).toString().padLeft(3, '0');
-    final numeroArqueo = '$fechaHoyStr$secuencia';
+    final secuencia = (count + 1).toString().padLeft(6, '0');
+    final numeroArqueo = secuencia;
 
     final arqueo = ArqueoCaja(
       sesionFiscalId: sesionId,
@@ -287,6 +281,13 @@ class FiscalService {
       'ultima_ndb': '00000000',
     };
 
+    try {
+      final resumen = await obtenerResumenFiscalSesion(sesionId);
+      datosFiscales['resumen_fiscal'] = resumen;
+    } catch (e) {
+      debugPrint('⚠️ Error obteniendo resumen fiscal para arqueo: $e');
+    }
+
     // Imprimir Reporte Cierre X
     await ThermalPrinterService.printArqueoCaja(
       arqueo.copyWithSyncFields(serverId: arqueoId.toString()),
@@ -373,15 +374,12 @@ class FiscalService {
     final double exento =
         totalExentoFacturas; // Las NC no suelen tener productos exentos en esta lógica, pero se asume neto
 
-    // 2. GENERAR REPORTE DE CIERRE (REPORTE Z) - NUMERICO: YYYYMMDDXXX
-    final fechaHoyStr =
-        ahora.toIso8601String().substring(0, 10).replaceAll('-', '');
+    // 2. GENERAR REPORTE DE CIERRE (REPORTE Z) ESTÁNDAR DE 6 DÍGITOS
     final resultCountRep = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM reportes_cierre WHERE numero_reporte LIKE ?',
-        ['$fechaHoyStr%']);
+        'SELECT COUNT(*) as count FROM reportes_cierre');
     final countRep = Sqflite.firstIntValue(resultCountRep) ?? 0;
-    final secuenciaRep = (countRep + 1).toString().padLeft(3, '0');
-    final numeroReporte = '$fechaHoyStr$secuenciaRep';
+    final secuenciaRep = (countRep + 1).toString().padLeft(6, '0');
+    final numeroReporte = secuenciaRep;
 
     // Generar Hash de Integridad (SHA-256)
     final String rawStringToHash =
@@ -510,43 +508,40 @@ class FiscalService {
       syncStatus: nuevoReporte.syncStatus,
     );
 
+    Map<String, dynamic>? resumenFiscal;
+    try {
+      resumenFiscal = await obtenerResumenFiscalSesion(sesion.id!);
+    } catch (e) {
+      debugPrint('⚠️ Error obteniendo resumen fiscal para cierre: $e');
+    }
+
     await ThermalPrinterService.printReporteCierre(reporteConId,
-        tasaCambio: tasaCambio);
+        tasaCambio: tasaCambio, resumenFiscal: resumenFiscal);
 
     debugPrint('🔒 Sesión fiscal cerrada e impresa: ${sesion.numeroSesion}');
     return reporteConId;
   }
 
-  /// Genera el siguiente correlativo para un documento de tipo FACTURA.
   Future<String> generarNumeroFactura() async {
     final db = await DbHelper.instance.database;
-    final ahora = DateTime.now();
 
-    // Generar número de factura numérico: YYYYMMDDXXX
-    final fechaHoyStr =
-        ahora.toIso8601String().substring(0, 10).replaceAll('-', '');
+    // Generar número de factura numérico estándar de 6 dígitos: 000000
     final resultCount = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM factura WHERE numero_control LIKE ?',
-        ['$fechaHoyStr%']);
+        'SELECT COUNT(*) as count FROM factura');
     final count = Sqflite.firstIntValue(resultCount) ?? 0;
-    final secuencia = (count + 1).toString().padLeft(3, '0');
-    return '$fechaHoyStr$secuencia';
+    final secuencia = (count + 1).toString().padLeft(6, '0');
+    return secuencia;
   }
 
-  /// Genera el siguiente correlativo para un documento de tipo NOTA_CREDITO.
   Future<String> generarNumeroNotaCredito() async {
     final db = await DbHelper.instance.database;
-    final ahora = DateTime.now();
 
-    // Generar número de nota de crédito numérico: YYYYMMDDXXX
-    final fechaHoyStr =
-        ahora.toIso8601String().substring(0, 10).replaceAll('-', '');
+    // Generar número de nota de crédito numérico estándar de 6 dígitos: 000000
     final resultCount = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM nota_credito WHERE numero_control LIKE ?',
-        ['$fechaHoyStr%']);
+        'SELECT COUNT(*) as count FROM nota_credito');
     final count = Sqflite.firstIntValue(resultCount) ?? 0;
-    final secuencia = (count + 1).toString().padLeft(3, '0');
-    return '$fechaHoyStr$secuencia';
+    final secuencia = (count + 1).toString().padLeft(6, '0');
+    return secuencia;
   }
 
   /// Obtiene los totales de un día específico.
@@ -612,4 +607,237 @@ class FiscalService {
       'notas_credito': ncs.first,
     };
   }
+
+  /// Obtiene un resumen fiscal detallado para una sesión fiscal específica.
+  /// Retorna un mapa con desgloses de facturas, notas de crédito, contadores acumulados, secuenciales e información del hardware.
+  Future<Map<String, dynamic>> obtenerResumenFiscalSesion(int sesionId) async {
+    final db = await DbHelper.instance.database;
+
+    // --- CONTADORES ACUMULADOS HISTÓRICOS ---
+    final contNoFiscalHistRes = await db.rawQuery('SELECT COUNT(*) as cant FROM arqueos_caja');
+    final int contNoFiscalHist = Sqflite.firstIntValue(contNoFiscalHistRes) ?? 0;
+
+    final contFactHistRes = await db.rawQuery("SELECT COUNT(*) as cant FROM factura WHERE tipo_documento = 'Factura' AND estado != 'anulado'");
+    final int contFactHist = Sqflite.firstIntValue(contFactHistRes) ?? 0;
+
+    final contNcHistRes = await db.rawQuery("SELECT COUNT(*) as cant FROM nota_credito WHERE estado = 'procesada'");
+    final int contNcHist = Sqflite.firstIntValue(contNcHistRes) ?? 0;
+
+    // --- CONTADORES DE LA SESIÓN ACTUAL ---
+    final noFiscalSesionRes = await db.rawQuery('SELECT COUNT(*) as cant FROM arqueos_caja WHERE sesion_fiscal_id = ?', [sesionId]);
+    final int noFiscalSesion = Sqflite.firstIntValue(noFiscalSesionRes) ?? 0;
+
+    // --- FACTURAS DE VENTA ---
+    final facturasResult = await db.rawQuery('''
+      SELECT 
+        COUNT(*) as cantidad_facturas,
+        COALESCE(SUM(total), 0) as total_ventas,
+        COALESCE(SUM(monto_base_imponible), 0) as base_imponible,
+        COALESCE(SUM(monto_exento), 0) as exento,
+        COALESCE(SUM(CASE WHEN tasa_iva = 16.0 THEN monto_base_imponible ELSE 0 END), 0) as base_16,
+        COALESCE(SUM(CASE WHEN tasa_iva = 16.0 THEN monto_iva ELSE 0 END), 0) as iva_16,
+        COALESCE(SUM(CASE WHEN tasa_iva = 8.0 THEN monto_base_imponible ELSE 0 END), 0) as base_8,
+        COALESCE(SUM(CASE WHEN tasa_iva = 8.0 THEN monto_iva ELSE 0 END), 0) as iva_8,
+        MIN(numero_control) as factura_inicial,
+        MAX(numero_control) as factura_final
+      FROM factura
+      WHERE sesion_fiscal_id = ? AND tipo_documento = 'Factura' AND estado != 'anulado'
+    ''', [sesionId]);
+    
+    final fData = facturasResult.first;
+
+    // --- NOTAS DE CRÉDITO ---
+    final ncResult = await db.rawQuery('''
+      SELECT 
+        nc.id,
+        nc.tipo,
+        nc.monto_total,
+        nc.iva,
+        nc.numero_control,
+        f.tasa_iva,
+        f.monto_exento as factura_exento
+      FROM nota_credito nc
+      INNER JOIN factura f ON nc.factura_id = f.id
+      WHERE f.sesion_fiscal_id = ? AND nc.estado = 'procesada'
+    ''', [sesionId]);
+
+    double subtotalDevoluciones = 0.0;
+    double baseImponible16Nc = 0.0;
+    double baseImponible8Nc = 0.0;
+    double baseExentaNc = 0.0;
+    double iva16Nc = 0.0;
+    double iva8Nc = 0.0;
+    double totalNc = 0.0;
+    int cantidadNc = ncResult.length;
+    
+    String? ncInicial;
+    String? ncFinal;
+
+    if (ncResult.isNotEmpty) {
+      final ncsSorted = List<Map<String, dynamic>>.from(ncResult);
+      ncsSorted.sort((a, b) => (a['numero_control'] as String).compareTo(b['numero_control'] as String));
+      ncInicial = ncsSorted.first['numero_control'] as String;
+      ncFinal = ncsSorted.last['numero_control'] as String;
+
+      for (var row in ncResult) {
+        final tipo = row['tipo'] as String;
+        final montoTotal = (row['monto_total'] as num).toDouble();
+        final iva = (row['iva'] as num).toDouble();
+        final tasaIva = (row['tasa_iva'] as num? ?? 16.0).toDouble();
+
+        if (tipo == 'total') {
+          final facturaExento = (row['factura_exento'] as num? ?? 0.0).toDouble();
+          baseExentaNc += facturaExento;
+          subtotalDevoluciones += montoTotal; // monto_total en NC total ya es la base imponible que incluye exento
+          if (tasaIva == 16.0) {
+            baseImponible16Nc += (montoTotal - facturaExento);
+            iva16Nc += iva;
+          } else if (tasaIva == 8.0) {
+            baseImponible8Nc += (montoTotal - facturaExento);
+            iva8Nc += iva;
+          }
+        } else {
+          // parcial se asume siempre al 16% según la lógica de creación
+          subtotalDevoluciones += montoTotal;
+          baseImponible16Nc += montoTotal;
+          iva16Nc += iva;
+        }
+      }
+      totalNc = subtotalDevoluciones + iva16Nc + iva8Nc;
+    }
+
+    // --- CONTADORES ACUMULADOS DEL MES ---
+    final sesionResult = await db.query('sesiones_fiscales', where: 'id = ?', whereArgs: [sesionId], limit: 1);
+    final String fechaSesionStr = sesionResult.first['fecha_apertura'] as String;
+    final String mesFiltro = fechaSesionStr.substring(0, 7); // 'YYYY-MM'
+
+    final facturasMesResult = await db.rawQuery('''
+      SELECT COUNT(*) as cant 
+      FROM factura 
+      WHERE fecha_creacion LIKE ? AND tipo_documento = 'Factura' AND estado != 'anulado'
+    ''', ['$mesFiltro%']);
+    final int facturasMes = Sqflite.firstIntValue(facturasMesResult) ?? 0;
+
+    final ncMesResult = await db.rawQuery('''
+      SELECT COUNT(*) as cant 
+      FROM nota_credito 
+      WHERE fecha_emision LIKE ? AND estado = 'procesada'
+    ''', ['$mesFiltro%']);
+    final int ncMes = Sqflite.firstIntValue(ncMesResult) ?? 0;
+
+    // --- ÚLTIMOS DOCUMENTOS DE LA SESIÓN ---
+    final ultFactResult = await db.rawQuery('''
+      SELECT numero_control, fecha_creacion, total 
+      FROM factura 
+      WHERE sesion_fiscal_id = ? AND tipo_documento = 'Factura' AND estado != 'anulado'
+      ORDER BY id DESC LIMIT 1
+    ''', [sesionId]);
+    Map<String, dynamic>? ultFactData = ultFactResult.isNotEmpty ? ultFactResult.first : null;
+
+    final ultArqueoResult = await db.rawQuery('''
+      SELECT numero_arqueo, fecha_arqueo 
+      FROM arqueos_caja 
+      WHERE sesion_fiscal_id = ? 
+      ORDER BY id DESC LIMIT 1
+    ''', [sesionId]);
+    Map<String, dynamic>? ultArqueoData = ultArqueoResult.isNotEmpty ? ultArqueoResult.first : null;
+
+    final ultZResult = await db.rawQuery('''
+      SELECT numero_reporte, fecha_reporte 
+      FROM reportes_cierre 
+      ORDER BY id DESC LIMIT 1
+    ''');
+    Map<String, dynamic>? ultZData = ultZResult.isNotEmpty ? ultZResult.first : null;
+
+    // --- ANULACIONES ---
+    final anulacionesResult = await db.rawQuery('''
+      SELECT 
+        COUNT(*) as cant,
+        COALESCE(SUM(monto_base_imponible), 0) as base_anulada,
+        COALESCE(SUM(monto_iva), 0) as iva_anulada,
+        COALESCE(SUM(monto_exento), 0) as exento_anulada
+      FROM factura 
+      WHERE sesion_fiscal_id = ? AND tipo_documento = 'Factura' AND estado = 'anulado'
+    ''', [sesionId]);
+    final anulacionesData = anulacionesResult.first;
+
+    // --- FORMAS DE PAGO CON CONTEO ---
+    final formasPagoResult = await db.rawQuery('''
+      SELECT metodo_pago, COUNT(*) as cant, COALESCE(SUM(total), 0) as total
+      FROM factura
+      WHERE sesion_fiscal_id = ? AND estado != 'anulado' AND tipo_documento = 'Factura'
+      GROUP BY metodo_pago
+    ''', [sesionId]);
+
+    final Map<String, Map<String, dynamic>> desgloseFormasPago = {};
+    for (var r in formasPagoResult) {
+      desgloseFormasPago[r['metodo_pago'] as String] = {
+        'cant': r['cant'] as int,
+        'total': (r['total'] as num).toDouble(),
+      };
+    }
+
+    return {
+      // Contadores acumulados históricos
+      'cont_no_fiscal_hist': contNoFiscalHist,
+      'cont_fact_hist': contFactHist,
+      'cont_nc_hist': contNcHist,
+      
+      // Contadores sesión actual
+      'no_fiscal_sesion': noFiscalSesion,
+
+      // Facturas
+      'cant_facturas': fData['cantidad_facturas'] as int? ?? 0,
+      'total_facturado': (fData['total_ventas'] as num? ?? 0.0).toDouble(),
+      'base_16_facturas': (fData['base_16'] as num? ?? 0.0).toDouble(),
+      'iva_16_facturas': (fData['iva_16'] as num? ?? 0.0).toDouble(),
+      'base_8_facturas': (fData['base_8'] as num? ?? 0.0).toDouble(),
+      'iva_8_facturas': (fData['iva_8'] as num? ?? 0.0).toDouble(),
+      'exento_facturas': (fData['exento'] as num? ?? 0.0).toDouble(),
+      'subtotal_ventas': (fData['base_imponible'] as num? ?? 0.0).toDouble() + (fData['exento'] as num? ?? 0.0).toDouble(),
+      'base_imponible_facturas': (fData['base_imponible'] as num? ?? 0.0).toDouble() + (fData['exento'] as num? ?? 0.0).toDouble(),
+      
+      // NC
+      'cant_nc': cantidadNc,
+      'subtotal_devoluciones': subtotalDevoluciones,
+      'base_imponible_nc': subtotalDevoluciones,
+      'base_16_nc': baseImponible16Nc,
+      'iva_16_nc': iva16Nc,
+      'base_8_nc': baseImponible8Nc,
+      'iva_8_nc': iva8Nc,
+      'exento_nc': baseExentaNc,
+      'total_nc': totalNc,
+
+      // Totales Netos
+      'total_ventas_netas': (fData['total_ventas'] as num? ?? 0.0).toDouble(),
+      'total_nc_netas': totalNc,
+      'total_general_neto': (fData['total_ventas'] as num? ?? 0.0).toDouble() - totalNc,
+
+      // Contadores del día y mes
+      'facturas_mes': facturasMes,
+      'nc_mes': ncMes,
+      'total_mes': facturasMes + ncMes,
+
+      // Secuenciales
+      'factura_inicial': fData['factura_inicial'] as String?,
+      'factura_final': fData['factura_final'] as String?,
+      'nc_inicial': ncInicial,
+      'nc_final': ncFinal,
+
+      // Últimos documentos
+      'ult_fact': ultFactData,
+      'ult_arqueo': ultArqueoData,
+      'ult_z': ultZData,
+
+      // Anulaciones
+      'cant_anuladas': anulacionesData['cant'] as int? ?? 0,
+      'base_anulada': (anulacionesData['base_anulada'] as num? ?? 0.0).toDouble(),
+      'iva_anulada': (anulacionesData['iva_anulada'] as num? ?? 0.0).toDouble(),
+      'exento_anulada': (anulacionesData['exento_anulada'] as num? ?? 0.0).toDouble(),
+
+      // Desglose de formas de pago
+      'formas_pago': desgloseFormasPago,
+    };
+  }
 }
+

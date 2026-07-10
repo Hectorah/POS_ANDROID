@@ -77,16 +77,16 @@ class _CreateNotaCreditoScreenState extends State<CreateNotaCreditoScreen> {
   }
 
   /// Normaliza la entrada del usuario al formato numero_control de la BD.
-  /// Ahora el formato es puramente numérico (ej: "0000001")
+  /// Ahora el formato es puramente numérico (ej: "000001")
   String _normalizarNumeroControl(String input) {
     String normalizado = input.trim();
     // Eliminar prefijo FAC- si existe
     normalizado = normalizado.toUpperCase().replaceAll('FAC-', '');
 
-    // Rellenar con ceros a 7 dígitos si es puramente numérico
+    // Rellenar con ceros a 6 dígitos si es puramente numérico
     final soloNumero = int.tryParse(normalizado);
     if (soloNumero != null) {
-      normalizado = soloNumero.toString().padLeft(7, '0');
+      normalizado = soloNumero.toString().padLeft(6, '0');
     }
 
     return normalizado;

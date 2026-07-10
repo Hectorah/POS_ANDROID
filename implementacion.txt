@@ -1,0 +1,32 @@
+Actúa como un desarrollador experto en Flutter/Dart, especializado en arquitectura limpia (Clean Architecture) y desarrollo de sistemas de Facturación POS con normativas fiscales estrictas (como el SENIAT de Venezuela).
+
+Necesito crear la lógica fiscal desde cero para un punto de venta (POS). Como aún no tengo el hardware de memoria física definitivo, debo simular una "Memoria Fiscal" y una "Memoria de Auditoría" utilizando archivos de texto (.txt) locales fuertemente encriptados. La arquitectura debe ser totalmente desacoplada para que en el futuro solo deba cambiar el "Storage" sin alterar la lógica del negocio.
+
+Por favor, genera el código estructurado en Dart bajo los siguientes requisitos técnicos:
+
+1. ARQUITECTURA Y ABSTRACCIÓN:
+- Crea una interfaz o clase abstracta llamada `IFiscalStorageRepository`.
+- Define los métodos necesarios para escribir y leer de la "Memoria Fiscal" y de la "Memoria de Auditoría".
+- Implementa esta interfaz en una clase concreta llamada `EncryptedTxtFiscalStorage`.
+
+2. DIVISIÓN DE MEMORIAS (Según requerimiento de asesor fiscal):
+- Memoria Fiscal: Debe almacenar Reportes Z (cierres globales), estatus de transmisión de datos y resúmenes de documentos fiscales.
+- Memoria de Auditoría: Debe almacenar el texto íntegro/plano de los documentos (Facturas, Notas de Crédito, Notas de Débito), documentos no fiscales (reportes X, recibos) y los contadores consecutivos. Se usará para la reimpresión exacta de documentos.
+
+3. REQUISITOS DE SEGURIDAD E INALTERABILIDAD (SENIAT):
+- Las funciones de escritura SOLO deben permitir añadir información (Append) o generar nuevos registros secuenciales. BAJO NINGÚN CONCEPTO se debe permitir editar o eliminar registros existentes.
+- Utiliza el paquete `encrypt` de Dart (AES-256) para encriptar el contenido antes de escribirlo en el archivo .txt, y desencriptarlo al leerlo. 
+- Define una estructura clara para almacenar una clave de encriptación (puedes usar un string hardcodeado por ahora como placeholder seguro, idealmente derivado de un hash del serial del equipo).
+
+4. MODELOS DE DATOS REQUERIDOS:
+- `FiscalDocumentModel`: Id, tipoDocumento (fiscal/no fiscal), numeroFactura, cedulaRif, montoBase, montoIva, montoTotal, fechaHora, textoImpresion Completo.
+- `ReporteZModel`: IdReporteZ, fechaHora, totalVentasFiscales, totalIva, ultimaFacturaDespachada, primeraFacturaDespachada, estatusTransmision (booleano).
+
+5. SALIDA ESPERADA:
+- Código Dart limpio, documentado, con manejo de excepciones (Try-Catch) para manejo de archivos (`io`).
+- El path de almacenamiento debe resolverse usando `path_provider` (usa el directorio de documentos de la aplicación de forma interna y privada).
+- Incluye un ejemplo de cómo instanciar y llamar a estos repositorios desde un caso de uso (UseCase) simulado.
+
+Firmas Hash (Chaining): Para que tu homologación sea blindada, haz que cada registro en el .txt guarde el hash (SHA-256) del registro anterior. De esta forma, si alguien logra descifrar el archivo y altera una línea, la cadena de hashes se rompe y el sistema detectará que la "memoria fiscal" fue corrompida.
+
+El texto de reimpresión: En la memoria de auditoría, guarda el string exacto con los saltos de línea \n tal y como se mandó a la tiquera. El SENIAT exige que la reimpresión sea una copia fiel y exacta del documento original.

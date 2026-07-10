@@ -498,9 +498,6 @@ class DbHelper {
   Future<String> generarNumeroControl(
       {String? prefijo, int? rangoMaximo}) async {
     final db = await database;
-
-    // Usar configuración centralizada si no se especifican parámetros
-    final prefijoFinal = prefijo ?? AppConfig.prefijoNumeroControl;
     final rangoMaximoFinal = rangoMaximo ?? AppConfig.rangoMaximoNumeroControl;
 
     try {
@@ -511,38 +508,40 @@ class DbHelper {
         SELECT numero_control 
         FROM factura 
         WHERE numero_control IS NOT NULL
-        ORDER BY CAST(SUBSTR(numero_control, INSTR(numero_control, '-') + 1) AS INTEGER) DESC
+        ORDER BY id DESC
         LIMIT 1
       ''');
 
       int siguienteNumero = 1; // Por defecto, empezar en 1
 
       if (result.isNotEmpty && result.first['numero_control'] != null) {
-        // 2. Extraer el número del formato "00-0000001"
         final ultimoControl = result.first['numero_control'] as String;
-        final partes = ultimoControl.split('-');
-
-        if (partes.length == 2) {
-          final ultimoNumero = int.tryParse(partes[1]) ?? 0;
+        if (ultimoControl.contains('-')) {
+          final partes = ultimoControl.split('-');
+          if (partes.length == 2) {
+            final ultimoNumero = int.tryParse(partes[1]) ?? 0;
+            siguienteNumero = ultimoNumero + 1;
+          }
+        } else {
+          final ultimoNumero = int.tryParse(ultimoControl) ?? 0;
           siguienteNumero = ultimoNumero + 1;
-
-          debugPrint('   Último número de control: $ultimoControl');
-          debugPrint('   Siguiente número: $siguienteNumero');
         }
+        debugPrint('   Último número de control: $ultimoControl');
+        debugPrint('   Siguiente número: $siguienteNumero');
       } else {
         debugPrint('   Primera factura - Iniciando en 1');
       }
 
-      // 3. Validar que no exceda el rango autorizado
+      // 2. Validar que no exceda el rango autorizado
       if (siguienteNumero > rangoMaximoFinal) {
         final mensaje = 'Rango de números de control agotado. '
-            'Último número: ${_formatearNumeroControl(rangoMaximoFinal, prefijo: prefijoFinal)}. '
+            'Último número: ${rangoMaximoFinal.toString().padLeft(6, '0')}. '
             'Solicite un nuevo rango al SENIAT.';
         debugPrint('❌ $mensaje');
         throw Exception(mensaje);
       }
 
-      // 4. Alertar si quedan pocos números disponibles
+      // 3. Alertar si quedan pocos números disponibles
       final restantes = rangoMaximoFinal - siguienteNumero;
       if (restantes <= AppConfig.umbralAlertaNumeroControl) {
         debugPrint(
@@ -550,7 +549,7 @@ class DbHelper {
         debugPrint('   Solicite un nuevo rango al SENIAT pronto');
       }
 
-      // 5. Verificar que el número generado no exista ya (defensa ante duplicados del pull)
+      // 4. Verificar que el número generado no exista ya (defensa ante duplicados del pull)
       bool existe = true;
       while (existe) {
         final check = await db.query(
@@ -558,7 +557,7 @@ class DbHelper {
           columns: ['id'],
           where: 'numero_control = ?',
           whereArgs: [
-            _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal)
+            siguienteNumero.toString().padLeft(6, '0')
           ],
           limit: 1,
         );
@@ -573,9 +572,8 @@ class DbHelper {
         }
       }
 
-      // 6. Formatear y retornar
-      final numeroControl =
-          _formatearNumeroControl(siguienteNumero, prefijo: prefijoFinal);
+      // 5. Formatear y retornar
+      final numeroControl = siguienteNumero.toString().padLeft(6, '0');
       debugPrint('✅ Número de control generado: $numeroControl');
 
       return numeroControl;
@@ -611,15 +609,17 @@ class DbHelper {
 
       for (int i = 0; i < facturas.length; i++) {
         final control = facturas[i]['numero_control'] as String;
-        final partes = control.split('-');
+        int? numero;
 
-        if (partes.length != 2 || partes[0] != prefijo) {
-          debugPrint(
-              '⚠️ Formato inválido en factura ${facturas[i]['id']}: $control');
-          return false;
+        if (control.contains('-')) {
+          final partes = control.split('-');
+          if (partes.length == 2 && partes[0] == prefijo) {
+            numero = int.tryParse(partes[1]);
+          }
+        } else {
+          numero = int.tryParse(control);
         }
 
-        final numero = int.tryParse(partes[1]);
         if (numero == null) {
           debugPrint(
               '⚠️ Número inválido en factura ${facturas[i]['id']}: $control');
@@ -630,8 +630,7 @@ class DbHelper {
         final numeroEsperado = i + 1;
         if (numero != numeroEsperado) {
           debugPrint('⚠️ Salto detectado en factura ${facturas[i]['id']}:');
-          debugPrint(
-              '   Esperado: ${_formatearNumeroControl(numeroEsperado, prefijo: prefijo)}');
+          debugPrint('   Esperado: $numeroEsperado');
           debugPrint('   Encontrado: $control');
           return false;
         }

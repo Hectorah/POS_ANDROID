@@ -287,22 +287,18 @@ class NotaCreditoDao {
     }
   }
 
-  /// Generar número de control único numérico: YYYYMMDDXXX
+  /// Generar número de control estándar de 6 dígitos: 000000
   Future<String> generarNumeroControl() async {
     final db = await _database;
-    final ahora = DateTime.now();
 
     try {
-      final fechaHoyStr = ahora.toIso8601String().substring(0, 10).replaceAll('-', '');
-
       final resultCount = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM nota_credito WHERE numero_control LIKE ?',
-        ['$fechaHoyStr%']
+        'SELECT COUNT(*) as count FROM nota_credito'
       );
 
       final count = Sqflite.firstIntValue(resultCount) ?? 0;
-      final secuencia = (count + 1).toString().padLeft(3, '0');
-      return '$fechaHoyStr$secuencia';
+      final secuencia = (count + 1).toString().padLeft(6, '0');
+      return secuencia;
 
     } catch (e) {
       debugPrint('❌ Error generando número de control: $e');

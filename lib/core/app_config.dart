@@ -98,6 +98,28 @@ class AppConfig {
   /// Serial del dispositivo fiscal (opcional, si se deja vacío se intentará obtener dinámicamente)
   static String get serialDispositivo => _getEnv('FISCAL_SERIAL_DISPOSITIVO', defaultValue: '');
 
+  // ==========================================================================
+  // CONFIGURACIÓN DEL EQUIPO FISCAL (impresora/dispositivo SENIAT)
+  // ==========================================================================
+
+  /// Marca del equipo fiscal (ej: BIXOLON, EPSON, etc.)
+  static String get marcaEquipoFiscal => _getEnv('FISCAL_MARCA_EQUIPO', defaultValue: '');
+
+  /// Modelo del equipo fiscal (ej: SRP-350III)
+  static String get modeloEquipoFiscal => _getEnv('FISCAL_MODELO_EQUIPO', defaultValue: '');
+
+  /// Número de caja registradora (ej: 0001)
+  static String get numeroCaja => _getEnv('FISCAL_NUMERO_CAJA', defaultValue: '');
+
+  /// Número de tienda o sucursal (ej: 0001)
+  static String get numeroTienda => _getEnv('FISCAL_NUMERO_TIENDA', defaultValue: '');
+
+  /// Versión del firmware del equipo fiscal
+  static String get versionFirmware => _getEnv('FISCAL_VERSION_FIRMWARE', defaultValue: '');
+
+  /// Código de autorización IGM otorgado por SENIAT
+  static String get codigoIGM => _getEnv('FISCAL_CODIGO_IGM', defaultValue: '');
+
   
   // ==========================================================================
   // 3. CONFIGURACIÓN DE UBII (PAGOS ELECTRÓNICOS)
